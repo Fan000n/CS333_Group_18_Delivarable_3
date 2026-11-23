@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dubai Market Explorer · Vega-Lite</title>
+
+<script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0"></script>
+
+<style>
+  :root { --ink:#1c2530; --muted:#5b6673; --line:#d9dee4; --bg:#f3f5f7; --card:#fff; --accent:#1f5f8b; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0 16px 56px; font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+         color:var(--ink); background:var(--bg); line-height:1.55; }
+  main { max-width:1180px; margin:0 auto; }
+  header { padding:34px 0 4px; }
+  h1 { font-size:1.75rem; margin:0 0 6px; letter-spacing:-0.01em; }
+  header p { margin:0; color:var(--muted); max-width:80ch; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:20px 22px 24px; margin-top:20px; }
+  .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px; }
+  .toolbar .label { font-weight:600; margin-right:4px; }
+  .toolbar button {
+    font:inherit; font-size:.92rem; padding:6px 14px; border-radius:999px; cursor:pointer;
+    border:1px solid #b8c2cc; background:#fff; color:var(--ink);
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .toolbar button:hover:not(:disabled) { border-color:var(--accent); }
+  .toolbar button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .toolbar button:disabled { cursor:default; opacity:.65; }
+  .toolbar button:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  #caption { margin:6px 0 12px; min-height:3.2em; max-width:100ch; }
+  #caption b { color:var(--accent); }
+  .zoombar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px; padding:8px 12px;
+            background:#f3f6f9; border:1px solid var(--line); border-radius:8px; transition:opacity .2s; }
+  .zoombar .label { font-weight:600; }
+  .zoombar button { font:inherit; font-size:1rem; line-height:1; min-width:34px; height:32px; padding:0 10px; cursor:pointer;
+                    border:1px solid #b8c2cc; background:#fff; border-radius:6px; }
+  .zoombar button:hover:not(:disabled) { border-color:var(--accent); }
+  .zoombar button:focus-visible, .zoombar input:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  .zoombar input[type=range] { width:min(320px, 50vw); accent-color:var(--accent); }
+  .zoombar output { min-width:3.2em; font-variant-numeric:tabular-nums; font-weight:600; }
+  .zoombar .tip { color:var(--muted); font-size:.88rem; }
+  .zoombar.off { opacity:.5; }
+  .howto { margin:0 0 12px; }
+  .filterbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 14px; padding:8px 12px;
+              background:#f3f6f9; border:1px solid var(--line); border-radius:8px; }
+  .filterbar .label { font-weight:600; }
+  .filterbar input[type=range] { width:min(300px, 50vw); accent-color:var(--accent); }
+  .filterbar input:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  .filterbar output { min-width:2.4em; font-variant-numeric:tabular-nums; font-weight:600; }
+  .filterbar .tip { color:var(--muted); font-size:.88rem; }
+  .scroll { overflow-x:auto; }
+  .vega-bindings { display:flex; flex-wrap:wrap; gap:8px 28px; margin:8px 0 4px; font-size:.92rem; }
+  .vega-bindings .vega-bind { display:inline-flex; align-items:center; gap:8px; }
+  details { margin-top:16px; }
+  summary { cursor:pointer; font-weight:600; }
+  .notes { font-size:.9rem; color:var(--muted); max-width:100ch; }
+  .notes ul { padding-left:20px; margin:6px 0 10px; }
+  .error { color:#a12b2b; font-weight:600; }
+  @media (prefers-reduced-motion: reduce) { .toolbar button { transition:none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Dubai Market Explorer</h1>
+    <p>One bubble per community. Switch the layout and the same bubbles glide into a new arrangement, each one answering a different question about Dubai's property market. Click a bubble to see that community's history underneath.</p>
+  </header>
+
+  <div class="card">
+
+    <details class="howto">
+      <summary>How to read this, and how the data was prepared</summary>
+      <div class="notes">
+        <ul>
+          <li><b>Bubbles:</b> every bubble is one community. Area is the number of sales. Colour is the median price per m² in 7 classes with an equal number of communities each, so differences stay visible even though a few communities are very expensive. The colour is the same in every layout, so you can follow a community from one view to the next.</li>
+          <li><b>Layouts:</b> the map uses the community's real position. Price vs size places each community by typical size (m²) and price per m². Market maturity groups communities by the share of sales that are off-plan (under a third, a third to two thirds, over two thirds). The two bar layouts rank the top 20 by number of sales or by median price per m².</li>
+          <li><b>Reliability:</b> a median from a handful of sales is not trustworthy, so communities with fewer sales than the slider value are hidden (default 25). Lowering it shows more communities but with shakier medians.</li>
+          <li><b>Data used:</b> sales of units and villas registered 1 Jan 2015 to 31 Aug 2026. Prices outside 2,000 to 80,000 AED/m² and sizes outside 15 to 2,000 m² are dropped as implausible. The file is a 10% sample, so counts are about a tenth of real volumes, but medians are not affected. Community names and positions come from Dubai Municipality's <code>dubai.geojson</code>, linked through <code>comm_num</code>.</li>
+          <li><b>Zoom and pan (Map layout):</b> scroll the mouse wheel or pinch on a touchpad to zoom towards the pointer, drag to pan, or use the slider and the + and − buttons. The boundaries, the bubbles and their sizes are all driven by the same zoom parameter, so they always stay aligned. Bubbles grow a little more slowly than the map, so crowded bubbles separate as you zoom in, and more community names appear.</li>
+          <li><b>Animation:</b> the animation is done inside Vega-Lite. Each bubble is a rectangle whose position, size and corner roundness are computed for every layout, and a parameter blends between two layouts over about a second, with a small delay per bubble. Fully rounded corners make a square look like a circle and a long thin rectangle look like a bar.</li>
+        </ul>
+      </div>
+    </details>
+    <div class="filterbar" id="filterbar">
+      <label for="minSalesSlider" class="label">Hide communities with fewer sales than:</label>
+      <input type="range" id="minSalesSlider" min="15" max="150" step="5" value="25" aria-label="Minimum number of sales for a community to be shown">
+      <output id="minSalesValue" for="minSalesSlider">25</output>
+      <span class="tip" id="minSalesCount">Medians based on very few sales are unreliable, so raise this to see only well-supported communities.</span>
+    </div>
+    <div class="toolbar" role="group" aria-label="Choose a layout">
+      <span class="label">Layout:</span>
+      <button type="button" data-layout="0" class="active">Map</button>
+      <button type="button" data-layout="1">Price vs size</button>
+      <button type="button" data-layout="3">Market maturity</button>
+      <button type="button" data-layout="2">Bars: most sales</button>
+      <button type="button" data-layout="4">Bars: highest price</button>
+    </div>
+    <p id="caption"></p>
+    <div class="zoombar" id="zoombar" role="group" aria-label="Map zoom">
+      <span class="label">Map zoom:</span>
+      <button type="button" id="zOut" aria-label="Zoom out">&minus;</button>
+      <input type="range" id="zoomSlider" min="1" max="8" step="0.05" value="1" aria-label="Map zoom level">
+      <button type="button" id="zIn" aria-label="Zoom in">+</button>
+      <output id="zoomValue" for="zoomSlider">1.0×</output>
+      <button type="button" id="zReset">Reset view</button>
+      <span class="tip" id="zoomTip">Scroll, pinch or drag on the map. Bubbles grow as you zoom in.</span>
+    </div>
+    <div class="scroll"><div id="vis"></div></div>
+
+  </div>
+</main>
+
+<script>
+const CSV_URL = "https://raw.githubusercontent.com/sharios/CS333/main/2026-27/Part%202/transactions.csv";
+const GEO_URL = "https://raw.githubusercontent.com/sharios/CS333/main/2026-27/Part%202/dubai.geojson";
+const GEO_DATA = { url: GEO_URL, format: { type: "json", property: "features" } };
+/* separate URL for the boundary layer so Vega-Lite does not merge it with the lookup source */
+const GEO_BASE = { url: GEO_URL + "?layer=base", format: { type: "json", property: "features" } };
+
+/* ---------------- layout geometry (pixels inside the 900 x 560 view) ---------------- */
+const W = 900, H = 560;
+const MAP = { scale: 50000, lon0: 55.245, lat0: 25.11, tx: 380, ty: 285 };
+const SC  = { x0: 100, x1: 850, y0: 30, y1: 500, sizeMin: 40, sizeMax: 260, priceMin: 3000, priceMax: 50000 };
+const BAR = { labelX: 252, x0: 260, len: 520, top: 30, pitch: 24, thick: 18, count: 20 };
+const GRP = { centers: [150, 450, 750], cols: 5, pitch: 56, top: 95, headY: 40 };
+const LAYOUT_NAMES = ["map", "scatter", "barsSales", "groups", "barsPrice"];
+
+/* ---------------- data preparation shared by every view ---------------- */
+const CLEAN = [
+  { filter: "datum.instance_date >= utc(2015, 0, 1) && datum.instance_date <= utc(2026, 7, 31, 23, 59, 59, 999)" },
+  { filter: "datum.trans_group_en == 'Sales' && (datum.property_type_en == 'Unit' || datum.property_type_en == 'Villa')" },
+  { filter: "datum.meter_sale_price >= 2000 && datum.meter_sale_price <= 80000 && datum.procedure_area >= 15 && datum.procedure_area <= 2000" },
+  { calculate: "toString(datum.comm_num)", as: "comm" },
+  { calculate: "datum.reg_type_en == 'Off-Plan Properties' ? 1 : 0", as: "isOff" }
+];
+
+/* one row per community, with every layout's rectangle (L,R,T,B) computed */
+const arr = f => "[" + [0, 1, 2, 3, 4].map(i => "datum." + f + i).join(",") + "]";
+const mix = f => arr(f) + "[fromL]*(1-datum.e)+" + arr(f) + "[toL]*datum.e";
+
+const COMMUNITY = [
+  ...CLEAN,
+  { aggregate: [
+      { op: "count", as: "n" },
+      { op: "median", field: "meter_sale_price", as: "medPrice" },
+      { op: "median", field: "procedure_area", as: "medSize" },
+      { op: "mean", field: "isOff", as: "offShare" }
+    ], groupby: ["comm"] },
+  { lookup: "comm", from: { data: GEO_DATA, key: "properties.COMM_NUM", fields: ["properties"] }, as: ["props"] },
+  { filter: "datum.props != null && datum.n >= minSales" },
+  { calculate: "datum.props.CNAME_E", as: "cname" },
+  { calculate: "datum.props.Longitude", as: "lon" },
+  { calculate: "datum.props.Latitude", as: "lat" },
+  { joinaggregate: [
+      { op: "max", field: "n", as: "maxN" },
+      { op: "max", field: "medPrice", as: "maxP" },
+      { op: "count", as: "total" }
+    ] },
+  { window: [{ op: "row_number", as: "rankN" }], sort: [{ field: "n", order: "descending" }] },
+  { window: [{ op: "row_number", as: "rankP" }], sort: [{ field: "medPrice", order: "descending" }] },
+  { window: [{ op: "ntile", param: 7, as: "cls" }], sort: [{ field: "medPrice", order: "ascending" }] },
+  { joinaggregate: [{ op: "min", field: "medPrice", as: "clsMin" }, { op: "max", field: "medPrice", as: "clsMax" }], groupby: ["cls"] },
+  { calculate: "format(datum.clsMin, ',.0f') + ' – ' + format(datum.clsMax, ',.0f')", as: "priceClass" },
+  { calculate: "datum.offShare < 0.3334 ? 0 : (datum.offShare < 0.6667 ? 1 : 2)", as: "g" },
+  { window: [{ op: "row_number", as: "rankG" }], sort: [{ field: "n", order: "descending" }], groupby: ["g"] },
+  { calculate: "2 + 0.33 * sqrt(datum.n)", as: "r" },
+
+  /* centres of the bubble layouts */
+  /* map layout: base position, then zoom about the centre of the view plus a pan offset (zoom, panX, panY are parameters) */
+  { calculate: `${W / 2} + (${MAP.tx} + ${MAP.scale} * (datum.lon - ${MAP.lon0}) * PI / 180 - ${W / 2}) * zoom + panX`, as: "cx0" },
+  { calculate: `${H / 2} + (${MAP.ty} - ${MAP.scale} * (log(tan(PI/4 + datum.lat * PI/360)) - log(tan(PI/4 + ${MAP.lat0} * PI/360))) - ${H / 2}) * zoom + panY`, as: "cy0" },
+  { calculate: "datum.r * pow(zoom, 0.8)", as: "rz" },
+  { calculate: `${SC.x0} + ${SC.x1 - SC.x0} * min(1, max(0, (datum.medSize - ${SC.sizeMin}) / ${SC.sizeMax - SC.sizeMin}))`, as: "cx1" },
+  { calculate: `${SC.y1} - ${SC.y1 - SC.y0} * min(1, max(0, (datum.medPrice - ${SC.priceMin}) / ${SC.priceMax - SC.priceMin}))`, as: "cy1" },
+  { calculate: `[${GRP.centers.join(",")}][datum.g] - ${GRP.cols * GRP.pitch / 2 - GRP.pitch / 2} + ((datum.rankG - 1) % ${GRP.cols}) * ${GRP.pitch}`, as: "cx3" },
+  { calculate: `${GRP.top} + floor((datum.rankG - 1) / ${GRP.cols}) * ${GRP.pitch}`, as: "cy3" },
+
+  /* rectangle (left, right, top, bottom) of every layout; bubbles are squares that get fully rounded corners */
+  ...[[0, "cx0", "cy0", "rz"], [1, "cx1", "cy1", "r"], [3, "cx3", "cy3", "r"]].flatMap(([i, cx, cy, rad]) => [
+    { calculate: `datum.${cx} - datum.${rad}`, as: "L" + i },
+    { calculate: `datum.${cx} + datum.${rad}`, as: "R" + i },
+    { calculate: `datum.${cy} - datum.${rad}`, as: "T" + i },
+    { calculate: `datum.${cy} + datum.${rad}`, as: "B" + i }
+  ]),
+  ...[[2, "rankN", "n", "maxN"], [4, "rankP", "medPrice", "maxP"]].flatMap(([i, rank, val, mx]) => [
+    { calculate: `${BAR.x0}`, as: "L" + i },
+    { calculate: `datum.${rank} <= ${BAR.count} ? ${BAR.x0} + ${BAR.len} * datum.${val} / datum.${mx} : ${BAR.x0} + 0.5`, as: "R" + i },
+    { calculate: `${BAR.top} + (min(datum.${rank}, ${BAR.count + 1}) - 1) * ${BAR.pitch}`, as: "T" + i },
+    { calculate: `datum.T${i} + (datum.${rank} <= ${BAR.count} ? ${BAR.thick} : 0.5)`, as: "B" + i }
+  ])
+];
+
+/* animated blend between layout fromL and layout toL; tt runs 0 -> 1 and each bubble gets a small delay */
+const MORPH = [
+  { calculate: "min(1, max(0, tt * 1.5 - (datum.rankN - 1) / datum.total * 0.5))", as: "lt" },
+  { calculate: "datum.lt * datum.lt * (3 - 2 * datum.lt)", as: "e" },
+  { calculate: mix("L"), as: "L" },
+  { calculate: mix("R"), as: "R" },
+  { calculate: mix("T"), as: "T" },
+  { calculate: mix("B"), as: "B" },
+  { calculate: "[1,1,(datum.rankN<=20?1:0),1,(datum.rankP<=20?1:0)][fromL]*(1-datum.e)+[1,1,(datum.rankN<=20?1:0),1,(datum.rankP<=20?1:0)][toL]*datum.e", as: "op" }
+];
+
+/* ---------------- static pixel annotations for the scatter layout ---------------- */
+const sx = v => SC.x0 + (SC.x1 - SC.x0) * (v - SC.sizeMin) / (SC.sizeMax - SC.sizeMin);
+const sy = v => SC.y1 - (SC.y1 - SC.y0) * (v - SC.priceMin) / (SC.priceMax - SC.priceMin);
+const SIZE_TICKS = [50, 100, 150, 200, 250].map(v => ({ x: sx(v), y: SC.y0, y2: SC.y1, label: v + " m²", ly: SC.y1 + 16 }));
+const PRICE_TICKS = [10000, 20000, 30000, 40000, 50000].map(v => ({ y: sy(v), x: SC.x0, x2: SC.x1, label: v.toLocaleString("en-US"), lx: SC.x0 - 8 }));
+
+const ink = "#1c2530", grey = "#9aa3ad";
+const px = (f, extra = {}) => ({ field: f, type: "quantitative", scale: null, axis: null, ...extra });
+
+const layers = [
+  /* 0. community boundaries, only visible in the map layout */
+  {
+    data: GEO_BASE,
+    mark: { type: "geoshape", fill: "#dde3e9", stroke: "#7d8996", strokeWidth: 0.7, opacity: { expr: "w0" }, tooltip: false, clip: true }
+  },
+
+  /* 1. scatter background panel, grid and labels, visible in the price vs size layout */
+  { data: { values: [{ x: SC.x0, x2: SC.x1, y: SC.y0, y2: SC.y1 }] },
+    mark: { type: "rect", fill: "#eef2f6", stroke: "#8d98a5", strokeWidth: 1, opacity: { expr: "w1" } },
+    encoding: { x: px("x"), x2: { field: "x2" }, y: px("y"), y2: { field: "y2" } } },
+  { data: { values: SIZE_TICKS }, mark: { type: "rule", color: "#b9c2cc", strokeWidth: 1, opacity: { expr: "w1" } },
+    encoding: { x: px("x"), y: px("y"), y2: { field: "y2" } } },
+  { data: { values: PRICE_TICKS }, mark: { type: "rule", color: "#b9c2cc", strokeWidth: 1, opacity: { expr: "w1" } },
+    encoding: { y: px("y"), x: px("x"), x2: { field: "x2" } } },
+  { data: { values: SIZE_TICKS }, mark: { type: "text", fontSize: 12, color: "#2f3a46", opacity: { expr: "w1" } },
+    encoding: { x: px("x"), y: px("ly"), text: { field: "label", type: "nominal" } } },
+  { data: { values: PRICE_TICKS }, mark: { type: "text", fontSize: 12, align: "right", color: "#2f3a46", opacity: { expr: "w1" } },
+    encoding: { x: px("lx"), y: px("y"), text: { field: "label", type: "nominal" } } },
+  { data: { values: [{ x: (SC.x0 + SC.x1) / 2, y: SC.y1 + 36, t: "Typical home size in the community (median m², larger to the right)" }] },
+    mark: { type: "text", fontSize: 12, fontWeight: 600, opacity: { expr: "w1" } },
+    encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } },
+  { data: { values: [{ x: 14, y: (SC.y0 + SC.y1) / 2, t: "Median price per m² (AED, higher is up)" }] },
+    mark: { type: "text", fontSize: 12, fontWeight: 600, angle: 270, opacity: { expr: "w1" } },
+    encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } },
+
+  /* 2. group headers (counts come from the data), visible in the market maturity layout */
+  {
+    transform: [...COMMUNITY, { aggregate: [{ op: "count", as: "k" }], groupby: ["g"] },
+      { calculate: "['Mostly existing homes','Mixed market','Mostly off-plan'][datum.g]", as: "head" },
+      { calculate: "['under a third off-plan','a third to two thirds off-plan','over two thirds off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
+      { calculate: `[${GRP.centers.join(",")}][datum.g]`, as: "hx" }],
+    mark: { type: "text", fontSize: 14, fontWeight: 700, opacity: { expr: "w3" } },
+    encoding: { x: px("hx"), y: { value: GRP.headY }, text: { field: "head", type: "nominal" } }
+  },
+  {
+    transform: [...COMMUNITY, { aggregate: [{ op: "count", as: "k" }], groupby: ["g"] },
+      { calculate: "['under a third off-plan','a third to two thirds off-plan','over two thirds off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
+      { calculate: `[${GRP.centers.join(",")}][datum.g]`, as: "hx" }],
+    mark: { type: "text", fontSize: 11, color: "#5b6673", opacity: { expr: "w3" } },
+    encoding: { x: px("hx"), y: { value: GRP.headY + 17 }, text: { field: "sub", type: "nominal" } }
+  },
+
+  /* 3. the bubbles themselves: one rectangle per community that morphs between layouts */
+  {
+    transform: [...COMMUNITY, ...MORPH],
+    params: [
+      { name: "hov", select: { type: "point", fields: ["comm"], on: "mouseover", clear: "mouseout" } },
+      { name: "pick", select: { type: "point", fields: ["comm"], on: "click", clear: "dblclick" }, value: [{ comm: "681" }] }
+    ],
+    mark: { type: "rect", cornerRadius: 999, cursor: "pointer", strokeWidth: 1, clip: true },
+    encoding: {
+      x: px("L"), x2: { field: "R" },
+      y: px("T"), y2: { field: "B" },
+      fill: {
+        field: "priceClass", type: "ordinal", sort: { field: "medPrice", op: "min" },
+        scale: { scheme: { name: "yelloworangered", count: 7 } },
+        legend: { title: ["Median price per m²", "(AED, 7 classes)"], symbolType: "square", symbolSize: 220, orient: "right", titleLimit: 220, labelLimit: 200 }
+      },
+      opacity: px("op", { scale: null }),
+      order: { field: "n", sort: "descending" },
+      stroke: { condition: [
+        { param: "pick", empty: false, value: "#111111" },
+        { param: "hov", empty: false, value: "#555555" }
+      ], value: "#ffffff" },
+      strokeWidth: { condition: [
+        { param: "pick", empty: false, value: 3 },
+        { param: "hov", empty: false, value: 2 }
+      ], value: 1 },
+      tooltip: [
+        { field: "cname", type: "nominal", title: "Community" },
+        { field: "n", type: "quantitative", title: "Sales", format: ",d" },
+        { field: "medPrice", type: "quantitative", title: "Median AED per m²", format: ",.0f" },
+        { field: "medSize", type: "quantitative", title: "Median size (m²)", format: ",.0f" },
+        { field: "offShare", type: "quantitative", title: "Share off-plan", format: ".0%" }
+      ]
+    }
+  },
+
+  /* 4. labels for the biggest markets (more appear as you zoom in), only in the map layout */
+  {
+    transform: [...COMMUNITY, ...MORPH,
+      { filter: "datum.rankN <= 4 + (zoom - 1) * 12" },
+      { calculate: "(datum.L + datum.R) / 2", as: "xc" },
+      { calculate: "datum.T - 4", as: "yl" },
+      { calculate: "datum.op * w0", as: "lop" }],
+    mark: { type: "text", baseline: "bottom", fontSize: 10, fontWeight: 600, color: ink, clip: true },
+    encoding: { x: px("xc"), y: px("yl"), opacity: px("lop", { scale: null }), text: { field: "cname", type: "nominal" } }
+  },
+
+  /* 5. bar layouts: community names and values next to the bars */
+  ...[[2, "rankN", "n", ",d", "T2", "R2"], [4, "rankP", "medPrice", ",.0f", "T4", "R4"]].flatMap(([i, rank, val, fmt, T, R]) => [
+    {
+      transform: [...COMMUNITY, { filter: `datum.${rank} <= ${BAR.count}` },
+        { calculate: `datum.${T} + ${BAR.thick / 2}`, as: "yc" }],
+      mark: { type: "text", align: "right", baseline: "middle", fontSize: 11, color: ink, opacity: { expr: "pow(w" + i + ", 3)" } },
+      encoding: { x: { value: BAR.labelX }, y: px("yc"), text: { field: "cname", type: "nominal" } }
+    },
+    {
+      transform: [...COMMUNITY, { filter: `datum.${rank} <= ${BAR.count}` },
+        { calculate: `datum.${T} + ${BAR.thick / 2}`, as: "yc" },
+        { calculate: `datum.${R} + 6`, as: "xr" },
+        { calculate: `format(datum.${val}, '${fmt}')`, as: "valText" }],
+      mark: { type: "text", align: "left", baseline: "middle", fontSize: 11, fontWeight: 600, color: ink, opacity: { expr: "pow(w" + i + ", 3)" } },
+      encoding: { x: px("xr"), y: px("yc"), text: { field: "valText", type: "nominal" } }
+    }
+  ])
+];
+
+/* ---------------- second view: history of the clicked community ---------------- */
+const HISTORY = [
+  ...CLEAN,
+  { filter: { param: "pick", empty: false } },
+  { calculate: "utcFormat(datum.instance_date, '%Y')", as: "yr" }
+];
+const REG = { domain: ["Existing Properties", "Off-Plan Properties"], range: ["#2b7bba", "#e8742a"] };
+
+const header = {
+  width: W, height: 22,
+  transform: [
+    ...CLEAN, { filter: { param: "pick", empty: false } },
+    { lookup: "comm", from: { data: GEO_DATA, key: "properties.COMM_NUM", fields: ["properties"] }, as: ["props"] },
+    { calculate: "datum.props.CNAME_E", as: "cname" },
+    { aggregate: [{ op: "count", as: "n" }, { op: "median", field: "meter_sale_price", as: "med" }], groupby: ["cname"] },
+    { calculate: "datum.cname + '  ·  ' + format(datum.n, ',d') + ' sales  ·  median ' + format(datum.med, ',.0f') + ' AED per m²'", as: "txt" }
+  ],
+  mark: { type: "text", align: "left", baseline: "top", fontSize: 15, fontWeight: 700, color: ink },
+  encoding: { x: { value: 0 }, y: { value: 0 }, text: { field: "txt", type: "nominal" } }
+};
+
+const salesPerYear = {
+  width: 330, height: 190,
+  title: { text: "Sales per year", subtitle: "Existing vs off-plan · click a bubble above to change community", anchor: "start" },
+  transform: HISTORY,
+  mark: { type: "bar", tooltip: true },
+  encoding: {
+    x: { field: "yr", type: "ordinal", title: "Year (2026 is January to August)", axis: { labelAngle: -45 } },
+    y: { aggregate: "count", type: "quantitative", title: "Number of sales", axis: { format: ",d" } },
+    color: { field: "reg_type_en", type: "nominal", scale: REG, legend: { title: "Sale type", orient: "right", labelLimit: 200 } },
+    order: { field: "reg_type_en", sort: "descending" }
+  }
+};
+
+const pricePerYear = {
+  width: 400, height: 190,
+  title: { text: "Median price per m² by year", subtitle: "Years with fewer than 3 sales omitted", anchor: "start" },
+  transform: [
+    ...HISTORY,
+    { aggregate: [{ op: "count", as: "n" }, { op: "median", field: "meter_sale_price", as: "med" }], groupby: ["yr"] },
+    { filter: "datum.n >= 3" },
+    { calculate: "toNumber(datum.yr)", as: "yrNum" }
+  ],
+  mark: { type: "line", point: { filled: true, size: 45 }, color: "#c0392b", strokeWidth: 2.5 },
+  encoding: {
+    x: { field: "yrNum", type: "quantitative", title: "Year", scale: { zero: false, nice: false }, axis: { format: "d", tickMinStep: 1, labelAngle: 0 } },
+    y: { field: "med", type: "quantitative", title: "Median price per m² (AED)", scale: { zero: false }, axis: { format: ",d" } },
+    tooltip: [
+      { field: "yr", type: "nominal", title: "Year" },
+      { field: "n", type: "quantitative", title: "Sales", format: ",d" },
+      { field: "med", type: "quantitative", title: "Median AED per m²", format: ",.0f" }
+    ]
+  }
+};
+
+/* ---------------- the complete Vega-Lite specification ---------------- */
+const spec = {
+  $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+  config: {
+    view: { stroke: null },
+    font: "Segoe UI, system-ui, Arial, sans-serif",
+    axis: { titleFontSize: 12, labelFontSize: 11, titleFontWeight: 600 },
+    legend: { titleFontSize: 11, labelFontSize: 11 },
+    title: { fontSize: 14, fontWeight: 600, subtitleFontSize: 11, subtitleColor: "#5b6673" }
+  },
+  data: {
+    url: CSV_URL,
+    format: { type: "csv", parse: { instance_date: "date", meter_sale_price: "number", procedure_area: "number", comm_num: "number" } }
+  },
+
+  params: [
+    /* animation state: blend from layout fromL to layout toL, tt goes 0 -> 1 (driven by the buttons) */
+    { name: "fromL", value: 0 },
+    { name: "toL", value: 0 },
+    { name: "tt", value: 1 },
+    { name: "te", expr: "tt * tt * (3 - 2 * tt)" },
+    /* map zoom and pan (driven by mouse wheel, drag and the zoom slider) */
+    { name: "zoom", value: 1 },
+    { name: "panX", value: 0 },
+    { name: "panY", value: 0 },
+    /* how strongly each layout is currently shown (used to fade annotations in and out) */
+    ...LAYOUT_NAMES.map((n, i) => ({ name: "w" + i, expr: `(fromL == ${i} ? 1 - te : 0) + (toL == ${i} ? te : 0)` })),
+    /* minimum number of sales for a community to be shown (driven by the slider at the top of the page) */
+    { name: "minSales", value: 25 }
+  ],
+
+  spacing: 18,
+  vconcat: [
+    {
+      width: W, height: H, layer: layers,
+      /* same maths as the bubble positions, so boundaries and bubbles zoom and pan together */
+      projection: {
+        type: "mercator", center: [MAP.lon0, MAP.lat0],
+        scale: { expr: MAP.scale + " * zoom" },
+        translate: { expr: `[(${MAP.tx} - ${W / 2}) * zoom + ${W / 2} + panX, (${MAP.ty} - ${H / 2}) * zoom + ${H / 2} + panY]` }
+      }
+    },
+    { vconcat: [header, { spacing: 40, hconcat: [salesPerYear, pricePerYear] }], spacing: 6 }
+  ]
+};
+
+/* ---------------- page logic: animate the blend between layouts ---------------- */
+const CAPTIONS = [
+  "<b>Where are the busiest markets?</b> Each bubble sits at its community's real location. Area is the number of sales and colour is the median price per m². The four biggest markets are labelled. Scroll, pinch or drag to zoom and pan: the bubbles grow as you zoom in and more names appear.",
+  "<b>What do you get for the money?</b> Left to right is typical home size, bottom to top is price per m². Communities toward the upper left sell small homes that cost a lot per m²; communities toward the lower right sell larger homes that cost less per m².",
+  "<b>Which communities are the busiest?</b> The 20 communities with the most sales. Bar length is the number of sales; colour still shows price.",
+  "<b>How mature is each market?</b> Communities grouped by the share of their sales that are off-plan. Size is still the number of sales, so you can see whether the big markets are new or established.",
+  "<b>Which communities are the most expensive per m²?</b> The 20 communities with the highest median price per m². The bars are re-sorted from the previous view, so you can see which busy markets are also pricey."
+];
+
+let view = null, current = 0, busy = false;
+
+/* ---------------- map zoom and pan (mouse wheel, touchpad pinch, drag, slider) ---------------- */
+const Z_MIN = 1, Z_MAX = 8;
+const zoomSlider = document.getElementById("zoomSlider");
+const zoomValue = document.getElementById("zoomValue");
+const zoombar = document.getElementById("zoombar");
+const zoomButtons = ["zIn", "zOut", "zReset"].map(id => document.getElementById(id));
+let canvas = null, drag = null, dragMoved = false;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const mapActive = () => view && current === 0 && !busy;
+
+function syncZoomUI() {
+  const z = view ? view.signal("zoom") : 1;
+  zoomSlider.value = z;
+  zoomValue.textContent = z.toFixed(1) + "×";
+  const on = current === 0 && !busy;
+  zoombar.classList.toggle("off", !on);
+  zoomSlider.disabled = !on;
+  zoomButtons.forEach(b => (b.disabled = !on));
+  if (canvas) {
+    canvas.style.cursor = on ? "grab" : "";
+    canvas.style.touchAction = on ? "none" : "";
+  }
+}
+
+function applyView(z, px, py) {
+  z = clamp(z, Z_MIN, Z_MAX);
+  const mx = (z - 1) * W * 0.55, my = (z - 1) * H * 0.55;      /* no panning at 1x, more room when zoomed */
+  view.signal("zoom", z)
+      .signal("panX", clamp(px, -mx, mx))
+      .signal("panY", clamp(py, -my, my))
+      .run();
+  syncZoomUI();
+}
+
+/* zoom so that the map point under (sx, sy) stays under the pointer; (sx, sy) are in plot pixels */
+function zoomAt(newZ, sx, sy) {
+  const z0 = view.signal("zoom"), px0 = view.signal("panX"), py0 = view.signal("panY");
+  newZ = clamp(newZ, Z_MIN, Z_MAX);
+  const k = newZ / z0;
+  applyView(newZ, sx - W / 2 - (sx - W / 2 - px0) * k, sy - H / 2 - (sy - H / 2 - py0) * k);
+}
+
+function plotPoint(e) {                                         /* pointer position inside the map's plot area */
+  const r = canvas.getBoundingClientRect(), o = view.origin();
+  return [e.clientX - r.left - o[0], e.clientY - r.top - o[1]];
+}
+const inPlot = p => p[0] >= 0 && p[0] <= W && p[1] >= 0 && p[1] <= H;
+
+function initZoomControls() {
+  canvas = document.querySelector("#vis canvas");
+  if (!canvas) return;
+
+  canvas.addEventListener("wheel", e => {
+    if (!mapActive()) return;
+    const p = plotPoint(e);
+    if (!inPlot(p)) return;
+    e.preventDefault();                                          /* zoom the map instead of scrolling the page */
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomAt(view.signal("zoom") * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), p[0], p[1]);
+  }, { passive: false });
+
+  canvas.addEventListener("pointerdown", e => {
+    if (!mapActive() || e.button !== 0 || !inPlot(plotPoint(e))) return;
+    drag = { x: e.clientX, y: e.clientY, px: view.signal("panX"), py: view.signal("panY") };
+    dragMoved = false;
+  });
+  window.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!dragMoved && Math.hypot(dx, dy) < 4) return;
+    dragMoved = true;
+    canvas.style.cursor = "grabbing";
+    applyView(view.signal("zoom"), drag.px + dx, drag.py + dy);
+  });
+  window.addEventListener("pointerup", () => {
+    if (!drag) return;
+    drag = null;
+    if (canvas) canvas.style.cursor = mapActive() ? "grab" : "";
+  });
+  /* a drag that ends over a bubble must not count as a click on it */
+  canvas.addEventListener("click", e => {
+    if (dragMoved) { e.stopImmediatePropagation(); e.preventDefault(); }
+    dragMoved = false;
+  }, true);
+
+  zoomSlider.addEventListener("input", () => zoomAt(Number(zoomSlider.value), W / 2, H / 2));
+  document.getElementById("zIn").addEventListener("click", () => zoomAt(view.signal("zoom") * 1.4, W / 2, H / 2));
+  document.getElementById("zOut").addEventListener("click", () => zoomAt(view.signal("zoom") / 1.4, W / 2, H / 2));
+  document.getElementById("zReset").addEventListener("click", () => applyView(1, 0, 0));
+  syncZoomUI();
+}
+const buttons = [...document.querySelectorAll(".toolbar button")];
+const caption = document.getElementById("caption");
+caption.innerHTML = CAPTIONS[0];
+
+function setActive(i) {
+  buttons.forEach(b => b.classList.toggle("active", Number(b.dataset.layout) === i));
+  caption.innerHTML = CAPTIONS[i];
+}
+
+function goTo(target) {
+  if (!view || busy || target === current) return;
+  busy = true;
+  buttons.forEach(b => (b.disabled = true));
+  setActive(target);
+  syncZoomUI();
+
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const duration = reduce ? 1 : 1400;
+  const start = performance.now();
+  view.signal("fromL", current).signal("toL", target).signal("tt", 0).run();
+
+  function frame(now) {
+    const p = Math.min(1, (now - start) / duration);
+    view.signal("tt", p).run();
+    if (p < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      view.signal("fromL", target).signal("toL", target).signal("tt", 1).run();
+      current = target;
+      busy = false;
+      buttons.forEach(b => (b.disabled = false));
+      syncZoomUI();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* minimum-sales filter (slider at the top of the page) */
+function initFilter() {
+  const slider = document.getElementById("minSalesSlider");
+  const out = document.getElementById("minSalesValue");
+  slider.addEventListener("input", () => {
+    out.textContent = slider.value;
+    view.signal("minSales", Number(slider.value)).run();
+  });
+}
+
+buttons.forEach(b => b.addEventListener("click", () => goTo(Number(b.dataset.layout))));
+
+vegaEmbed("#vis", spec, { actions: { export: true, source: true, compiled: false, editor: false }, renderer: "canvas" })
+  .then(res => { view = res.view; initZoomControls(); initFilter(); })
+  .catch(err => {
+    console.error(err);
+    document.getElementById("vis").innerHTML = '<p class="error">Could not render the chart: ' + err.message + "</p>";
+  });
+</script>
+</body>
+</html>
