@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What's around the station? · Dubai Metro scrollytelling</title>
+
+<script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0"></script>
+
+<style>
+  :root {
+    --ink:#1c2530; --muted:#5b6673; --line:#d9dee4; --bg:#f3f5f7; --card:#ffffff;
+    --red:#d9272e; --green:#2e9c5b; --accent:#1f5f8b; --sea:#dbe9f4;
+    --nav-h:54px;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:auto; }
+  body { margin:0; font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+         color:var(--ink); background:var(--bg); line-height:1.55; }
+  a { color:var(--accent); }
+
+  /* ---------- header ---------- */
+  .hero { max-width:1180px; margin:0 auto; padding:34px 18px 18px; }
+  .hero h1 { margin:0 0 8px; font-size:clamp(1.7rem, 4vw, 2.5rem); letter-spacing:-0.02em; line-height:1.15; }
+  .hero p { margin:0 0 10px; max-width:70ch; color:var(--muted); font-size:1.05rem; }
+  .hero .cue { display:inline-flex; align-items:center; gap:8px; font-weight:600; color:var(--accent); }
+  .hero .skip { margin-left:16px; font-size:.92rem; }
+
+  /* ---------- story layout ---------- */
+  .story { max-width:1180px; margin:0 auto; padding:0 18px 40px;
+           display:grid; grid-template-columns:minmax(290px,370px) 1fr; gap:26px; align-items:start; }
+  .steps { order:1; }
+  .stage { order:2; position:sticky; top:14px; z-index:4; margin-left:calc(var(--ex, 0) * var(--shift, 0px) * -1); height:calc(100vh - 28px); display:flex; flex-direction:column;
+           background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .stage-inner { position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+  #vis { width:100%; margin-top:calc(var(--ex, 0) * 44px); }
+  #vis .vega-embed { width:100%; display:block; }
+  #vis canvas { display:block; }
+
+  .steps { opacity:calc(1 - var(--ex, 0) * 1.7); }
+  .story.expanded .steps { pointer-events:none; }
+  .step[hidden], .explore[hidden] { display:none !important; }
+  .step-explore { min-height:130vh; padding:0; }
+  .ex-strip { position:absolute; left:0; right:0; top:0; height:44px; z-index:6; display:flex; align-items:center; padding:0 14px;
+              background:#fff; border-bottom:1px solid var(--line); opacity:var(--ex, 0); pointer-events:none; overflow:hidden; }
+  .story.expanded .ex-strip { pointer-events:auto; }
+  .ex-strip .controls { margin:0; flex-wrap:nowrap; gap:8px 18px; }
+  .ex-strip .controls label, .ex-strip .controls .seg-label { white-space:nowrap; }
+  .step { min-height:92vh; display:flex; align-items:center; padding:6vh 0; }
+  .step:first-child { min-height:70vh; }
+  .step.finale-step { min-height:100vh; align-items:flex-start; padding-top:14vh; }
+  .card { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--accent);
+          border-radius:10px; padding:18px 20px 20px; box-shadow:0 2px 12px rgba(20,35,50,.07);
+          opacity:.55; transition:opacity .35s, transform .35s; transform:translateY(6px); }
+  .step.active .card { opacity:1; transform:none; }
+  .card .kicker { margin:0 0 4px; font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .card h2 { margin:0 0 8px; font-size:1.35rem; line-height:1.2; }
+  .card p { margin:0 0 8px; font-size:1.02rem; }
+  .card p:last-child { margin-bottom:0; }
+  .card .small { font-size:.88rem; color:var(--muted); }
+  .card b.n { color:var(--accent); }
+  .step[data-route="Green"] .card { border-left-color:var(--green); }
+  .step[data-route="Red"] .card { border-left-color:var(--red); }
+
+  /* ---------- map key (top-left of the map, over the sea) ---------- */
+  .legend { position:absolute; left:10px; top:8px; z-index:3; pointer-events:none; display:flex; flex-direction:column; gap:3px;
+            font-size:.76rem; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.08); border-radius:6px; padding:5px 9px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .legend i { display:inline-block; width:20px; height:0; border-top:4px solid var(--red); }
+  .legend i.g { border-top-color:var(--green); }
+  .legend i.d { border-top-style:dashed; }
+  .legend .sz { color:var(--muted); }
+  .legend .dot-key { display:none; flex-direction:column; gap:3px; }
+  .legend .map-key { display:flex; flex-direction:column; gap:3px; }
+  .legend b.dot { width:11px; height:11px; border-radius:50%; background:var(--red); display:inline-block; border:1.5px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.2); }
+  .legend b.dot.g { background:var(--green); }
+  /* in the finale the key moves to the free column on the right, clear of the scatter plot */
+  .legend.finale { left:auto; right:12px; top:98px; opacity:calc(1 - var(--ex, 0) * 2.5); }
+  .legend.finale .map-key { display:none; }
+  .legend.finale .dot-key { display:flex; }
+
+  /* ---------- navigation ---------- */
+  .route-nav { flex:0 0 var(--nav-h); display:flex; align-items:center; gap:8px; padding:0 10px; border-top:1px solid var(--line); background:#fafbfc; }
+  .route-nav button.arrow { font:inherit; font-size:.88rem; padding:6px 12px; border:1px solid #b8c2cc; background:#fff; border-radius:999px; cursor:pointer; white-space:nowrap; }
+  .route-nav button.arrow:hover:not(:disabled) { border-color:var(--accent); }
+  .route-nav button.arrow:disabled { opacity:.45; cursor:default; }
+  .route-nav button:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  .dots { flex:1 1 auto; display:flex; justify-content:center; align-items:center; gap:7px; list-style:none; margin:0; padding:0; flex-wrap:wrap; }
+  .dots button { width:14px; height:14px; padding:0; border-radius:50%; border:2px solid #8896a4; background:#fff; cursor:pointer; }
+  .dots button.visited { background:#8896a4; }
+  .dots button.active { background:var(--ink); border-color:var(--ink); transform:scale(1.35); }
+  .nav-label { font-size:.82rem; color:var(--muted); min-width:7.5em; text-align:right; white-space:nowrap; }
+
+  /* ---------- explore section ---------- */
+  .explore { max-width:1280px; margin:0 auto; padding:6px 18px 40px; }
+  .explore-card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 22px 22px; box-shadow:0 2px 14px rgba(20,35,50,.07); }
+  .explore h2 { margin:0 0 6px; font-size:clamp(1.35rem,3vw,1.8rem); letter-spacing:-0.01em; }
+  .explore .lead { margin:0 0 12px; color:var(--muted); max-width:85ch; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px 22px; align-items:center; margin:0 0 14px; }
+  .controls label, .controls .seg-label { font-weight:600; font-size:.92rem; }
+  .controls select { font:inherit; font-size:.92rem; padding:6px 8px; border:1px solid #b8c2cc; border-radius:6px; background:#fff; max-width:min(340px, 90vw); }
+  .seg { display:inline-flex; border:1px solid #b8c2cc; border-radius:999px; overflow:hidden; }
+  .seg button { font:inherit; font-size:.88rem; padding:6px 14px; border:0; background:#fff; cursor:pointer; }
+  .seg button + button { border-left:1px solid #b8c2cc; }
+  .seg button.on { background:var(--accent); color:#fff; }
+  .controls button.plain { font:inherit; font-size:.88rem; padding:6px 14px; border:1px solid #b8c2cc; background:#fff; border-radius:999px; cursor:pointer; }
+  .controls button:focus-visible, .controls select:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  .dotkey { display:inline-flex; gap:14px; font-size:.85rem; color:var(--muted); align-items:center; }
+  .dotkey span { display:inline-flex; align-items:center; gap:6px; }
+  .dotkey b.dot { width:12px; height:12px; border-radius:50%; background:var(--red); display:inline-block; border:1.5px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.2); }
+  .dotkey b.dot.g { background:var(--green); }
+  #exploreVis { width:100%; min-height:420px; overflow-x:auto; }
+  #exploreVis .vega-embed { display:block; }
+
+  /* ---------- notes ---------- */
+  .notes { max-width:1180px; margin:0 auto; padding:0 18px 60px; }
+  .notes details { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 18px; }
+  .notes summary { cursor:pointer; font-weight:700; }
+  .notes ul { padding-left:20px; margin:8px 0; color:var(--muted); font-size:.93rem; max-width:100ch; }
+  .error { color:#a12b2b; font-weight:600; padding:16px; }
+  noscript { display:block; padding:20px; }
+
+  /* ---------- small screens: the stage sticks to the top, cards scroll beneath ---------- */
+  @media (max-width: 899px) {
+    .story { display:block; padding:0 0 30px; }
+    .stage { position:sticky; top:0; height:68vh; z-index:5; border-radius:0 0 10px 10px; border-left:0; border-right:0; }
+    .steps { padding:0 12px; }
+    .step { min-height:68vh; align-items:flex-start; padding:5vh 0; }
+    .step:first-child { min-height:52vh; }
+    .step.finale-step { min-height:95vh; padding-top:5vh; }
+    .step-explore { min-height:40vh; }
+    .card { opacity:1; transform:none; }
+    .nav-label { display:none; }
+    .legend { display:none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .card { transition:none; } }
+</style>
+</head>
+
+<body>
+<header class="hero">
+  <h1>What's around a Dubai metro station?</h1>
+  <p>Ride the Red Line from above and see what surrounds each stop: restaurants, shops, offices, airports and more. Then test a hunch: do the liveliest stations attract the most property sales?</p>
+  <span class="cue">&#8595; Scroll to start the ride</span>
+  <a class="skip" href="#step-finale">Skip to the finale</a>
+</header>
+<noscript>This story needs JavaScript to draw its charts.</noscript>
+
+<div class="story" id="story" style="--ex:0">
+  <div class="steps" id="steps"></div>
+
+  <div class="stage" id="stage">
+    <div class="stage-inner" id="stageInner">
+      <div class="ex-strip" id="exStrip"></div>
+      <div id="vis" role="img" aria-label="Top-down map of the Dubai Metro with a train that stops at selected stations, a bar chart of the venues around the current station, and a final scatter plot of venues against property sales."></div>
+      <div class="legend" id="legend">
+        <div class="map-key">
+          <span><i></i>Red Line</span><span><i class="g"></i>Green Line</span><span><i class="d"></i>Route 2020 branch</span>
+          <span class="sz">Circle area = venues around it</span>
+        </div>
+        <div class="dot-key">
+          <span><b class="dot"></b>Red Line station</span><span><b class="dot g"></b>Green Line station</span>
+          <span class="sz">One dot = one station</span>
+        </div>
+      </div>
+    </div>
+    <nav class="route-nav" aria-label="Story navigation">
+      <button type="button" class="arrow" id="prevBtn">&larr; Previous</button>
+      <ol class="dots" id="dots"></ol>
+      <span class="nav-label" id="navLabel"></span>
+      <button type="button" class="arrow" id="nextBtn">Next &rarr;</button>
+    </nav>
+  </div>
+</div>
+
+<section class="explore" id="explore">
+  <div class="explore-card" id="exploreCard">
+    <h2>Now explore it yourself</h2>
+    <p class="lead">Each dot is a station: venues around it (left to right) against property sales nearby (bottom to top). Click a dot, or pick a station from the list, to see what surrounds it on the right.</p>
+    <div class="controls" id="exControls">
+      <label for="exploreSelect">Station <select id="exploreSelect" aria-label="Choose a station"></select></label>
+      <span class="seg-label" id="avgLabel">Compare with the average:</span>
+      <span class="seg" role="group" aria-labelledby="avgLabel">
+        <button type="button" id="modeColour" class="on">Colour split</button><button type="button" id="modeTick">Black tick</button>
+      </span>
+      <button type="button" class="plain" id="exploreReset">Show the average station</button>
+      <span class="dotkey"><span><b class="dot"></b>Red Line</span><span><b class="dot g"></b>Green Line</span></span>
+    </div>
+    <div id="exploreVis" role="img" aria-label="Interactive scatter plot of venues around each metro station against nearby property sales, next to a bar chart of the venues around the selected station."></div>
+  </div>
+</section>
+
+<section class="notes">
+  <details>
+    <summary>Data notes: where the numbers come from</summary>
+    <ul>
+      <li><b>Venues:</b> <code>metro_venues_total.csv</code> from the course repository: the number of Foursquare venues of each of 10 categories around each of the 56 metro stations (Red Line including the Route 2020 branch, Green Line and Expo). The data was collected around 2020, so newer areas are under-counted. Station names in this file are the 2020 names.</li>
+      <li><b>Map:</b> station positions come from the same file. Lines join the stations in order, so they are schematic. Community boundaries are from <code>dubai.geojson</code> (Dubai Municipality), drawn only for context.</li>
+      <li><b>Sales (finale only):</b> sales of units and villas registered 1 Jan 2015 to 31 Aug 2026 in <code>transactions.csv</code>, with prices of 2,000 to 80,000 AED/m² and sizes of 15 to 2,000 m² (implausible values removed). Each sale is linked to a station through the transactions' <code>nearest_metro_en</code>, which is assigned per area, not per street. That column uses station names from different years, so names were matched to station numbers by hand where they had changed (for example “Sharaf Dg” is the station now numbered R33). The script is <code>prepare_sales.py</code>. Tram and monorail stops are not metro stations and are excluded, and 38 of the 56 stations have at least one linked sale.</li>
+      <li><b>Sample:</b> the transactions file is a random 10% sample, so real sales counts are about ten times higher. Comparisons between stations are still fair.</li>
+      <li><b>Correlation:</b> computed on the 38 stations with sales: Pearson correlation of venues and sales, and Spearman rank correlation (which ignores the huge range in sales).</li>
+    </ul>
+  </details>
+</section>
+
+<script>
+"use strict";
+
+/* ====================================================================
+   Data sources
+==================================================================== */
+const BASE = "https://raw.githubusercontent.com/sharios/CS333/main/2026-27/";
+const VENUES_URL = BASE + "Part%203/metro_venues_total.csv";
+const GEO_URL = BASE + "Part%202/dubai.geojson";
+
+/* Sales near each station (units and villas, 2015 to Aug 2026, 10% sample); produced by prepare_sales.py */
+const SALES = {"G11":31,"G12":3,"G13":4,"G14":1,"G15":1,"G16":4,"G17":28,"G18":13,"G19":3,"G22":115,"G24":253,"G28":121,"G29":305,"G30":1242,"R11":1576,"R12":17,"R14":1,"R16":11,"R17":8,"R20":2,"R21":309,"R22":245,"R23":82,"R24":168,"R25":3828,"R26":3460,"R29":374,"R31":1632,"R33":1592,"R34":3467,"R35":2746,"R36":1696,"R37":1309,"R38":767,"R39":775,"R40":303,"R41":172,"R42":245};
+const SALES_ROWS = Object.keys(SALES).map(k => ({ station_no: k, sales: SALES[k] }));
+
+const RED = "#d9272e", GREEN = "#2e9c5b", AMBER = "#f5a623", INK = "#1c2530";
+
+/* The train's journey: the Red Line from Rashidiya to Jabal Ali, then the Route 2020 branch to Expo */
+const JOURNEY_IDS = ["R11","R12","R13","R14","R15","R16","R17","R18","R19","R20","R21","R22","R23","R24","R25","R26",
+                     "R29","R31","R32","R33","R34","R35","R36","R37","R38","R70","R71","R72","R73","R74","R75","E07"];
+const TERMINALS = ["R11", "R42", "E07", "G11", "G30"];
+const SHORT_CATEGORY = {
+  "Food": "Food", "Shop & Service": "Shops & services", "Professional & Other Places": "Offices",
+  "Travel & Transport": "Travel", "Outdoors & Recreation": "Outdoors", "Nightlife Spot": "Nightlife",
+  "Residence": "Residences", "Arts & Entertainment": "Arts & culture", "College & University": "Colleges", "Event": "Events"
+};
+
+/* names drawn on the basemap so that Dubai is recognisable from the first view: [text, latitude, longitude, kind] */
+const PLACES = [
+  ["Arabian Gulf", 25.165, 55.115, "sea"], ["Deira", 25.274, 55.338, "land"],
+  ["Downtown", 25.19, 55.297, "land"], ["Dubai Marina", 25.078, 55.112, "sea"],
+  ["Mirdif", 25.222, 55.425, "land"], ["Jebel Ali", 25.042, 55.19, "land"]
+];
+
+
+/* ====================================================================
+   Small helpers
+==================================================================== */
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const pct = x => Math.round(x * 100) + "%";
+const mercY = lat => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+const invMercY = m => ((2 * Math.atan(Math.exp(m)) - Math.PI / 2) * 180) / Math.PI;
+const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+function pearson(xs, ys) {
+  const n = xs.length, mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+  return sxy / Math.sqrt(sxx * syy);
+}
+function ranks(a) {                       /* average ranks, so ties are handled */
+  const idx = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+  const r = new Array(a.length);
+  for (let i = 0; i < idx.length;) {
+    let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+    for (let k = i; k <= j; k++) r[idx[k][1]] = (i + j) / 2 + 1;
+    i = j + 1;
+  }
+  return r;
+}
+const spearman = (xs, ys) => pearson(ranks(xs), ranks(ys));
+
+/* ====================================================================
+   Load and prepare the venue data
+==================================================================== */
+async function loadContext() {
+  const text = await fetch(VENUES_URL).then(r => r.text());
+  const rows = vega.read(text, { type: "csv", parse: { latitude: "number", longitude: "number", venues: "number" } });
+
+  const st = {};                          /* station_no -> {name, route, lon, lat, total, cells} */
+  const catTotals = {};
+  rows.forEach(r => {
+    const s = st[r.station_no] || (st[r.station_no] = { no: r.station_no, name: r.station_name, route: r.route, lon: r.longitude, lat: r.latitude, total: 0, cells: {} });
+    s.total += r.venues; s.cells[r.category_name] = r.venues;
+    catTotals[r.category_name] = (catTotals[r.category_name] || 0) + r.venues;
+  });
+  const ids = Object.keys(st);
+  const totals = ids.map(k => st[k].total);
+  const grand = totals.reduce((a, b) => a + b, 0);
+  ids.forEach(k => { st[k].rank = 1 + totals.filter(t => t > st[k].total).length; });
+
+  const cats = Object.keys(catTotals).sort((a, b) => catTotals[b] - catTotals[a]);
+  const pooled = {}; cats.forEach(c => (pooled[c] = catTotals[c] / grand));
+  const maxCell = Math.max(...rows.map(r => r.venues));
+
+  /* journey geometry: cumulative distance along the route, in km */
+  const kmLon = 111.32 * Math.cos((25.1 * Math.PI) / 180), kmLat = 110.57;
+  const path = JOURNEY_IDS.map(id => ({ id, lon: st[id].lon, lat: st[id].lat, dist: 0 }));
+  for (let i = 1; i < path.length; i++) {
+    path[i].dist = path[i - 1].dist + Math.hypot((path[i].lon - path[i - 1].lon) * kmLon, (path[i].lat - path[i - 1].lat) * kmLat);
+  }
+  const journey = path.map(p => ({ station_no: p.id, dist: p.dist }));
+
+  /* overview camera: centre of the whole network */
+  const lons = ids.map(k => st[k].lon), lats = ids.map(k => st[k].lat);
+  const bbox = { lonMin: Math.min(...lons), lonMax: Math.max(...lons), latMin: Math.min(...lats), latMax: Math.max(...lats) };
+  const mMid = (mercY(bbox.latMin) + mercY(bbox.latMax)) / 2;
+  const overview = { lon: (bbox.lonMin + bbox.lonMax) / 2, lat: invMercY(mMid) };
+
+  /* finale statistics */
+  const withSales = ids.filter(k => SALES[k] > 0);
+  const xs = withSales.map(k => st[k].total), ys = withSales.map(k => SALES[k]);
+
+  return {
+    st, ids, cats, pooled, maxCell, grand, bbox, overview, path, journey,
+    avg: grand / ids.length, maxTotal: Math.max(...totals), minTotal: Math.min(...totals),
+    stats: { n: withSales.length, r: pearson(xs, ys), rho: spearman(xs, ys) }
+  };
+}
+
+/* ====================================================================
+   The story: one entry per step
+==================================================================== */
+function makeSteps(c) {
+  const s = c.st, share = (no, cat) => s[no].cells[cat] / s[no].total;
+  const cell = (no, cat) => s[no].cells[cat];
+  const b = t => `<b class="n">${t}</b>`;
+  return [
+    { key: "intro", stn: "AVG", route: "", kicker: "The network", title: "What's around a metro station?",
+      body: () => `<p>Dubai's metro has ${b(c.ids.length + " stations")} on three routes. Each circle is a station, and its size shows how many venues (places to eat, shop, work or stay) were counted around it.</p>
+        <p>The average station has ${b(fmt(c.avg))} venues. The busiest has ${b(fmt(c.maxTotal))}, the quietest just ${b(fmt(c.minTotal))}.</p>
+        <p>Scroll to ride the Red Line from Rashidiya, and see what each stop is like.</p>` },
+    { key: "R11", stn: "R11", route: "Red", kicker: "Stop 1 of 8 · Red Line", title: "Rashidiya: the quiet end of the line",
+      body: () => `<p>Only ${b(fmt(s.R11.total) + " venues")} (#${s.R11.rank} of ${c.ids.length}). About six in ten are everyday food places (${pct(share("R11", "Food"))}) and shops (${pct(share("R11", "Shop & Service"))}).</p>
+        <p class="small">The grey ticks in the chart show the average station for each category.</p>` },
+    { key: "R13", stn: "R13", route: "Red", kicker: "Stop 2 of 8 · Red Line", title: "Airport Terminal 3: built for travellers",
+      body: () => `<p>${b(cell("R13", "Travel & Transport") + " of its " + s.R13.total + " venues")} (${pct(share("R13", "Travel & Transport"))}) are travel and transport places, against ${pct(c.pooled["Travel & Transport"])} across the whole network.</p>` },
+    { key: "R18", stn: "R18", route: "Red", kicker: "Stop 3 of 8 · Red Line", title: "Union: where the lines cross",
+      body: () => `<p>Union is one of two stations where the Red and Green lines meet. It has ${b(fmt(s.R18.total) + " venues")} (#${s.R18.rank}), led by food (${pct(share("R18", "Food"))}) and travel and transport (${pct(share("R18", "Travel & Transport"))}).</p>` },
+    { key: "R20", stn: "R20", route: "Red", kicker: "Stop 4 of 8 · Red Line", title: "ADCB: a street of restaurants",
+      body: () => `<p>${b(cell("R20", "Food") + " of " + s.R20.total + " venues")} (${pct(share("R20", "Food"))}) are places to eat, far above the network's ${pct(c.pooled.Food)}.</p>` },
+    { key: "R25", stn: "R25", route: "Red", kicker: "Stop 5 of 8 · Red Line", title: "Burj Khalifa / Dubai Mall: Downtown",
+      body: () => `<p>${b(fmt(s.R25.total) + " venues")}, the #${s.R25.rank} busiest station. Food leads with ${cell("R25", "Food")} (${pct(share("R25", "Food"))}), then shops (${cell("R25", "Shop & Service")}) and offices (${cell("R25", "Professional & Other Places")}).</p>
+        <p>Four stations in a row, from World Trade Centre to here, each have ${fmt(Math.min(s.R22.total, s.R23.total, s.R24.total, s.R25.total))} to ${fmt(Math.max(s.R22.total, s.R23.total, s.R24.total, s.R25.total))} venues.</p>` },
+    { key: "R32", stn: "R32", route: "Red", kicker: "Stop 6 of 8 · Red Line", title: "Mall of the Emirates: shopping",
+      body: () => `<p>${b(cell("R32", "Shop & Service") + " of " + s.R32.total + " venues")} (${pct(share("R32", "Shop & Service"))}) are shops and services, almost double the network share of ${pct(c.pooled["Shop & Service"])}.</p>` },
+    { key: "R37", stn: "R37", route: "Red", kicker: "Stop 7 of 8 · Red Line", title: "DMCC: the liveliest station",
+      body: () => `<p>${b(fmt(s.R37.total) + " venues")}: more than any other station (#${s.R37.rank} of ${c.ids.length}). Residential buildings make up ${pct(share("R37", "Residence"))} of them, against ${pct(c.pooled.Residence)} network-wide: people live here, not just pass through.</p>` },
+    { key: "E07", stn: "E07", route: "Red", kicker: "Stop 8 of 8 · Route 2020 branch", title: "Expo: read this one with care",
+      body: () => `<p>Just ${b(fmt(s.E07.total) + " venues")}, the lowest of all ${c.ids.length} stations. But the venue data is a snapshot from around 2020, when this extension was brand new, so the count is probably out of date.</p>
+        <p class="small">Stations on this branch (R70 to R75 and Expo) have the same problem.</p>` },
+    { key: "finale", stn: "AVG", route: "", kicker: "The test", title: "Do lively stations get more sales?",
+      body: () => `<p>Each dot is a station: venues around it (left to right) and property sales in the areas nearest to it (bottom to top). If liveliness attracted buyers, the dots would climb to the right.</p>
+        <p>They don't. Across ${b(c.stats.n + " stations")} the correlation is only ${b(c.stats.r.toFixed(2))} (rank correlation ${c.stats.rho.toFixed(2)}). Rashidiya has ${s.R11.total} venues but ${fmt(SALES.R11)} sales; Airport Terminal 1 has ${s.R14.total} venues and ${SALES.R14}.</p>
+        <p>The liveliest stations are mostly older commercial districts, while sales cluster in newer residential areas.</p>
+        <p class="small">Red dots are Red Line stations and green dots are Green Line stations. Click a dot to see what is around it, or scroll on for a bigger version to explore.</p>` },
+    { key: "explore", stn: "AVG", route: "", kicker: "", title: "Explore it yourself", noCard: true, body: () => "" }
+  ];
+}
+
+/* ====================================================================
+   The Vega-Lite specification
+   Everything is positioned in pixels from parameters (camera, blend), so one
+   set of marks can fly along the map and then morph into a scatter plot.
+   On wide screens the venue panel is a card inside the map; on narrow screens it sits below it.
+==================================================================== */
+const TRAIN_PX = { wide: 54, narrow: 40 };
+let SCALE_PX = 1;                                     /* map pixels per radian at zoom 1, set by buildSpec */
+
+/* the venue card: header (name, route, venues, rank), one bar per category, and how it compares with the average station.
+   tickMode 0: blue up to the average, purple above it, whole bar orange when below average.
+   tickMode 1: plain blue bars with a black tick at the average (used in the finale).
+   Every position is an expression string, so the card can move and grow while the story expands. */
+const BLUE = "#2f6f9f", PURPLE = "#7b4fb3", ORANGE = "#e8842a";
+function panelLayers(c, box) {
+  const f = `(${box.f})`, bx = `(${box.x})`, by = `(${box.y})`, bw = `(${box.w})`, bh = `(${box.h})`;
+  const n = c.cats.length;
+  const LW = `(98 * ${f})`, VW = `(70 * ${f})`, HEAD = `(52 * ${f})`, FOOT = `(24 * ${f})`;
+  const rh = `((${bh} - ${HEAD} - ${FOOT}) / ${n})`, hb = `min(${rh} * 0.31, 11 * ${f})`;
+  const k = `((${bw} - ${LW} - ${VW} - 12) / ${c.maxCell})`, x0 = `(${bx} + ${LW})`;
+  const catsJson = JSON.stringify(c.cats);
+  const px = (fld, extra = {}) => ({ field: fld, type: "quantitative", scale: null, axis: null, ...extra });
+  const calcs = o => Object.entries(o).map(([as, calculate]) => ({ calculate, as }));
+  const sz = base => ({ expr: `${base} * ${f}` });
+  const PANEL = [
+    { calculate: "datum.station_no == stnA ? datum.venues : 0", as: "vA" },
+    { calculate: "datum.station_no == stnB ? datum.venues : 0", as: "vB" },
+    { aggregate: [{ op: "sum", field: "vA", as: "a" }, { op: "sum", field: "vB", as: "b" }, { op: "mean", field: "venues", as: "avg" }], groupby: ["category_name"] },
+    { calculate: "stnA == 'AVG' ? datum.avg : datum.a", as: "va" },
+    { calculate: "stnB == 'AVG' ? datum.avg : datum.b", as: "vb" },
+    { calculate: "datum.va * (1 - pe) + datum.vb * pe", as: "val" },
+    { joinaggregate: [{ op: "sum", field: "val", as: "tot" }] },
+    { calculate: "datum.tot > 0 ? datum.val / datum.tot : 0", as: "shr" },
+    { calculate: "format(datum.val, '.0f') + '  ·  ' + format(datum.shr, '.0%')", as: "lab" },
+    { calculate: `(${JSON.stringify(SHORT_CATEGORY)})[datum.category_name]`, as: "catName" },
+    { calculate: `indexof(${catsJson}, datum.category_name)`, as: "ci" },
+    ...calcs({
+      yc: `${by} + ${HEAD} + (datum.ci + 0.5) * ${rh}`,
+      yt: `datum.yc - ${hb}`, yb: `datum.yc + ${hb}`, yt2: `datum.yc - ${hb} * 1.35`, yb2: `datum.yc + ${hb} * 1.35`
+    }),
+    /* the bar is drawn in two pieces: [0, xe] in blue or orange, then [xs2, xe2] in purple */
+    { calculate: "tickMode == 1 ? datum.val : min(datum.val, datum.avg)", as: "xe" },
+    { calculate: "tickMode == 1 ? datum.val : datum.avg", as: "xs2" },
+    { calculate: "tickMode == 1 ? datum.val : max(datum.val, datum.avg)", as: "xe2" },
+    { calculate: `(tickMode == 0 && datum.val < datum.avg - 0.001) ? '${ORANGE}' : '${BLUE}'`, as: "bc" },
+    ...calcs({
+      xa: `${x0} + ${k} * datum.avg`, xb: `${x0} + ${k} * datum.xe`, xp0: `${x0} + ${k} * datum.xs2`, xp1: `${x0} + ${k} * datum.xe2`,
+      xs: x0, xl: `${x0} + ${k} * ${c.maxCell} + 8 * ${f}`, lx0: `${bx} + 10 * ${f}`
+    })
+  ];
+  const HEADROW = [
+    ...PANEL, { filter: "datum.ci == 0" },
+    { calculate: "hudName", as: "nm" },
+    { calculate: "hudRoute + '  ·  ' + format(datum.tot, ',.0f') + ' venues' + (hudRank == '' ? '' : '  ' + hudRank)", as: "sub" },
+    ...calcs({ hx: `${bx} + 30 * ${f}`, hy: `${by} + 18 * ${f}`, hx2: `${bx} + 12 * ${f}`, hy2: `${by} + 38 * ${f}` })
+  ];
+  const keyItems = [{ dx: 10, color: BLUE, label: "average" }, { dx: 86, color: PURPLE, label: "above average" }, { dx: 186, color: ORANGE, label: "below average" }];
+  return [
+    { data: { values: [{ k: 1 }] }, transform: calcs({ x: bx, x2: `${bx} + ${bw}`, y: by, y2: `${by} + ${bh}` }),
+      mark: { type: "rect", fill: "#ffffff", fillOpacity: 0.96, stroke: "#aeb9c4", strokeWidth: 1, cornerRadius: 10 },
+      encoding: { x: px("x"), x2: { field: "x2" }, y: px("y"), y2: { field: "y2" } } },
+    { data: { values: [{ k: 1 }] }, transform: calcs({ x: `${bx} + 16 * ${f}`, y: `${by} + 18 * ${f}` }),
+      mark: { type: "circle", size: { expr: `150 * ${f} * ${f}` }, color: { expr: "hudColor" }, stroke: "#ffffff", strokeWidth: 2 },
+      encoding: { x: px("x"), y: px("y") } },
+    { transform: HEADROW, mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(14), fontWeight: 700, color: INK },
+      encoding: { x: px("hx"), y: px("hy"), text: { field: "nm", type: "nominal" } } },
+    { transform: HEADROW, mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(11), color: "#4a5663" },
+      encoding: { x: px("hx2"), y: px("hy2"), text: { field: "sub", type: "nominal" } } },
+    { transform: PANEL, mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(10.5), color: INK },
+      encoding: { x: px("lx0"), y: px("yc"), text: { field: "catName", type: "nominal" } } },
+    { transform: PANEL, mark: { type: "rect" },
+      encoding: { x: px("xs"), x2: { field: "xb" }, y: px("yt"), y2: { field: "yb" }, color: { field: "bc", type: "nominal", scale: null, legend: null } } },
+    { transform: PANEL, mark: { type: "rect", color: PURPLE },
+      encoding: { x: px("xp0"), x2: { field: "xp1" }, y: px("yt"), y2: { field: "yb" } } },
+    { transform: PANEL, mark: { type: "rule", color: INK, strokeWidth: 2, opacity: { expr: "tickMode" } },
+      encoding: { x: px("xa"), y: px("yt2"), y2: { field: "yb2" } } },
+    { transform: PANEL, mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(10.5), fontWeight: 600, color: INK },
+      encoding: { x: px("xl"), y: px("yc"), text: { field: "lab", type: "nominal" } } },
+    /* key: colours (stations) or tick (finale) */
+    { data: { values: keyItems },
+      transform: calcs({ x: `${bx} + datum.dx * ${f}`, x2: `${bx} + (datum.dx + 10) * ${f}`, ly: `${by} + ${bh} - 12 * ${f}`, y: `datum.ly - 5 * ${f}`, y2: `datum.ly + 5 * ${f}` }),
+      mark: { type: "rect", opacity: { expr: "1 - tickMode" } },
+      encoding: { x: px("x"), x2: { field: "x2" }, y: px("y"), y2: { field: "y2" }, color: { field: "color", type: "nominal", scale: null, legend: null } } },
+    { data: { values: keyItems },
+      transform: calcs({ tx: `${bx} + (datum.dx + 15) * ${f}`, ty: `${by} + ${bh} - 12 * ${f}` }),
+      mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(10), color: "#4a5663", opacity: { expr: "1 - tickMode" } },
+      encoding: { x: px("tx"), y: px("ty"), text: { field: "label", type: "nominal" } } },
+    { data: { values: [{ t: "Dark tick = the average station" }] },
+      transform: calcs({ x: `${bx} + 10 * ${f}`, y: `${by} + ${bh} - 12 * ${f}` }),
+      mark: { type: "text", align: "left", baseline: "middle", fontSize: sz(10), color: "#6b7783", opacity: { expr: "tickMode" } },
+      encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } }
+  ];
+}
+
+/* Geometry of the scatter plot and the card, as expression strings.
+   Wide screens: it is blended by `ex` between the finale layout (card in the corner) and the explore layout
+   (scatter on the left half, large card on the right half), using the current canvas size gW x gH. */
+function geometry(W, Hm, wide, explore) {
+  const bw = clamp(Math.round(W * 0.4), 290, 340);
+  if (wide && !explore) {
+    return {
+      blend: true,
+      params: [
+        { name: "g_bx", expr: `(gW - ${bw} - 12) * (1 - ex) + (gW / 2 + 12) * ex` },
+        { name: "g_by", expr: "(gH - 256) * (1 - ex) + 10 * ex" },
+        { name: "g_bw", expr: `${bw} * (1 - ex) + (gW / 2 - 24) * ex` },
+        { name: "g_bh", expr: "244 * (1 - ex) + (gH - 20) * ex" },
+        { name: "g_pf", expr: "min(1.7, max(1, g_bh / 300))" },
+        { name: "g_X1", expr: `(gW - ${bw} - 32) * (1 - ex) + (gW / 2 - 28) * ex` },
+        { name: "g_Y0", expr: "34 * (1 - ex) + 50 * ex" },
+        { name: "g_Y1", expr: "gH - 48" },
+        { name: "g_fz", expr: "1 + 0.2 * ex" },
+        { name: "g_dot", expr: "7 + 3 * ex" }
+      ],
+      box: { x: "g_bx", y: "g_by", w: "g_bw", h: "g_bh", f: "g_pf" },
+      X0: "66", X1: "g_X1", Y0: "g_Y0", Y1: "g_Y1", fz: "g_fz", dot: "g_dot"
+    };
+  }
+  return { blend: false, params: [], box: null, X0: "66", X1: String(W - 26), Y0: "50", Y1: String(Hm - 48), fz: "1", dot: explore ? "10" : "7" };
+}
+
+function buildSpec(c, W, Hm, Hb, init, wide, explore = false) {
+  const dLon = ((c.bbox.lonMax - c.bbox.lonMin) * Math.PI) / 180;
+  const dMerc = mercY(c.bbox.latMax) - mercY(c.bbox.latMin);
+  const SC = 0.86 * Math.min(W / dLon, Hm / dMerc);               /* pixels per radian at zoom 1 */
+  SCALE_PX = SC;
+
+  const G = geometry(W, Hm, wide, explore);
+  const X0 = G.X0, X1 = G.X1, Y0 = G.Y0, Y1 = G.Y1, fz = G.fz, XMAX = 620, YMAX = 5000;
+  const tx = v => `${X0} + (${X1} - ${X0}) * min(1, ${v} / ${XMAX})`;
+  const ty = v => `${Y1} - (${Y1} - ${Y0}) * log(${v}) / log(${YMAX})`;
+  const calcs = o => Object.entries(o).map(([as, calculate]) => ({ calculate, as }));
+  const sz = base => ({ expr: `${base} * (${fz})` });
+  const px = (f, extra = {}) => ({ field: f, type: "quantitative", scale: null, axis: null, ...extra });
+
+  const STATION = [
+    { aggregate: [{ op: "sum", field: "venues", as: "venues" }], groupby: ["station_no", "station_name", "latitude", "longitude", "route"] },
+    { lookup: "station_no", from: { data: { values: c.journey }, key: "station_no", fields: ["dist"] } },
+    { lookup: "station_no", from: { data: { values: SALES_ROWS }, key: "station_no", fields: ["sales"] } },
+    ...mapPx2("longitude", "latitude", "mx", "my"),
+    { calculate: tx("datum.venues"), as: "sx" },
+    { calculate: `datum.sales > 0 ? ${ty("datum.sales")} : ${Y1}`, as: "sy" },
+    { calculate: "datum.mx * (1 - lw) + datum.sx * lw", as: "px" },
+    { calculate: "datum.my * (1 - lw) + datum.sy * lw", as: "py" },
+    { calculate: `(2.5 + 0.34 * sqrt(datum.venues)) * pow(zoom, 0.4) * (1 - lw) + ${G.dot} * lw`, as: "r" },
+    { calculate: "PI * datum.r * datum.r", as: "area" },
+    { calculate: "datum.dist == null ? 0.62 : (datum.dist <= prog + 0.0001 ? 1 : 0.45)", as: "base" },
+    { calculate: "datum.base * (1 - lw) + lw * (datum.sales > 0 ? 1 : 0)", as: "op" },
+    { calculate: `datum.route == 'Green' ? '${GREEN}' : '${RED}'`, as: "col" }
+  ];
+  function mapPx2(lon, lat, outX, outY) {
+    return [
+      { calculate: `ox + ${SC} * zoom * (datum.${lon} - camLon) * PI / 180`, as: outX },
+      { calculate: `oy - ${SC} * zoom * (log(tan(PI/4 + datum.${lat} * PI/360)) - log(tan(PI/4 + camLat * PI/360)))`, as: outY }
+    ];
+  }
+
+  const LINES = [
+    ...STATION,
+    { calculate: "datum.station_no == 'R38' ? ['redMain','redBranch'] : (substring(datum.station_no,0,1) == 'G' ? ['green'] : ((datum.station_no == 'E07' || toNumber(substring(datum.station_no,1)) >= 70) ? ['redBranch'] : ['redMain']))", as: "lines" },
+    { calculate: "datum.station_no == 'E07' ? 100 : toNumber(substring(datum.station_no,1))", as: "ord" },
+    { flatten: ["lines"] }
+  ];
+  const LINE_DOMAIN = ["redMain", "redBranch", "green"];
+  const LINE_FADE = "max(0, 1 - 3 * lw)";
+
+  /* station names: Red Line names go to the right of the line, Green Line names to the left, so they do not collide */
+  const LABELS = [
+    ...STATION,
+    { calculate: "replace(datum.station_name, 'Stations', 'Station')", as: "nm" },
+    { calculate: "max(min(1, max(0, (zoom - 2.2) / 0.8)), indexof(['R11','R42','E07','G11','G30'], datum.station_no) >= 0 ? 1 - min(1, max(0, (zoom - 1.4) / 0.6)) : 0) * (1 - lw)", as: "lop" },
+    { filter: "datum.station_no != 'G20' && datum.station_no != 'G26' && datum.lop > 0.02" },
+    { calculate: "(datum.route == 'Green' && indexof(['G11','G30'], datum.station_no) < 0) ? -1 : 1", as: "side" },
+    { calculate: "datum.px + datum.side * (datum.r + 5)", as: "lx" }
+  ];
+  const labelLayers = side => [
+    { transform: [...LABELS, { filter: `datum.side == ${side}` }],
+      mark: { type: "text", align: side > 0 ? "left" : "right", baseline: "middle", fontSize: 11, fontWeight: 700, color: "#ffffff", stroke: "#ffffff", strokeWidth: 4, strokeJoin: "round", clip: true },
+      encoding: { x: px("lx"), y: px("py"), opacity: px("lop"), text: { field: "nm", type: "nominal" } } },
+    { transform: [...LABELS, { filter: `datum.side == ${side}` }],
+      mark: { type: "text", align: side > 0 ? "left" : "right", baseline: "middle", fontSize: 11, fontWeight: 700, color: INK, clip: true },
+      encoding: { x: px("lx"), y: px("py"), opacity: px("lop"), text: { field: "nm", type: "nominal" } } }
+  ];
+
+  /* scatter-plot furniture (visible only when lw = 1); positions follow the expression-based geometry */
+  const xVals = [0, 100, 200, 300, 400, 500, 600].map(v => ({ v, label: String(v) }));
+  const yVals = [1, 10, 100, 1000].map(v => ({ v, label: fmt(v) }));
+  const xTickCalcs = calcs({ x: tx("datum.v"), y: Y0, y2: Y1, ly: `${Y1} + 14` });
+  const yTickCalcs = calcs({ y: ty("datum.v"), x: X0, x2: X1, lx: `${X0} - 8` });
+  const grey = "#c4ccd4";
+  const statBlock = [["The test"], [`${c.stats.n} stations`], [`correlation ${c.stats.r.toFixed(2)}`], [`rank correlation ${c.stats.rho.toFixed(2)}`]].map(([t], i) => ({ t, i }));
+  const statLine = [{ t: `${c.stats.n} stations · correlation ${c.stats.r.toFixed(2)}` }];
+  const textMark = (size, extra = {}) => ({ type: "text", fontSize: size, color: "#2f3a46", opacity: { expr: "lw" }, ...extra });
+  const T = (t, cal, size, extra) => ({ data: { values: [{ t }] }, transform: calcs(cal),
+    mark: textMark(size, extra), encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } });
+
+  const NOTE_LEFT = { R11: ["Rashidiya", 9, -9], G30: ["Creek", 9, 11], R25: ["Burj Khalifa", 9, -10], R34: ["Internet City", 9, 12] };
+  const NOTE_RIGHT = { R20: ["ADCB", -9, -10], R14: ["Airport T1", -9, -12], R37: ["DMCC", -9, -9] };
+  const pick = (dict, i) => JSON.stringify(Object.fromEntries(Object.entries(dict).map(([k, v]) => [k, v[i]])));
+  const noteLayer = (dict, align) => ({
+    transform: [
+      ...STATION,
+      { filter: `indexof(${JSON.stringify(Object.keys(dict))}, datum.station_no) >= 0` },
+      { calculate: `(${pick(dict, 0)})[datum.station_no]`, as: "short" },
+      { calculate: `datum.px + (${pick(dict, 1)})[datum.station_no]`, as: "tx" },
+      { calculate: `datum.py + (${pick(dict, 2)})[datum.station_no]`, as: "ty" }
+    ],
+    mark: { type: "text", align, baseline: "middle", fontSize: sz(11), fontWeight: 600, color: INK, opacity: { expr: "pow(lw, 4)" }, clip: true },
+    encoding: { x: px("tx"), y: px("ty"), text: { field: "short", type: "nominal" } }
+  });
+
+  const placeRows = PLACES.map(([name, lat, lon, kind]) => ({ name, lat, lon, kind }));
+  const trainOpacity = "trainOn * max(0, 1 - 3 * lw)";
+  const trainBase = { clip: true, strokeJoin: "round", opacity: { expr: trainOpacity } };
+  const trainEnc = { x: px("mx"), y: px("my"), order: { field: "i", type: "quantitative" } };
+  const TRAIN_LEN = wide ? TRAIN_PX.wide : TRAIN_PX.narrow;
+  const car = Math.round((TRAIN_LEN - 6) / 3);          /* three cars separated by two small gaps */
+
+  const L1 = [
+    /* 1. community boundaries and the sea, so that Dubai is recognisable from the first view */
+    { data: { url: GEO_URL, format: { type: "json", property: "features" } },
+      mark: { type: "geoshape", fill: "#f4f2ec", stroke: "#8f9ca9", strokeWidth: 0.9, opacity: { expr: "max(0, 1 - 2 * lw)" }, tooltip: false, clip: true } },
+    { data: { values: placeRows }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { type: "text", fontSize: 13, fontStyle: "italic", fontWeight: 600, color: "#6d7e8d", clip: true,
+              opacity: { expr: "max(0, 1 - (zoom - 1.3) / 0.9) * max(0, 1 - 3 * lw)" } },
+      encoding: { x: px("mx"), y: px("my"), text: { field: "name", type: "nominal" } } }
+  ];
+  const L2 = [
+    /* 2. scatter-plot panel, grid and labels */
+    { data: { values: [{ k: 1 }] }, transform: calcs({ x: X0, x2: X1, y: Y0, y2: Y1 }),
+      mark: { type: "rect", fill: "#ffffff", stroke: "#8d98a5", strokeWidth: 1, opacity: { expr: "lw" } },
+      encoding: { x: px("x"), x2: { field: "x2" }, y: px("y"), y2: { field: "y2" } } },
+    { data: { values: xVals }, transform: xTickCalcs, mark: { type: "rule", color: grey, opacity: { expr: "lw" } }, encoding: { x: px("x"), y: px("y"), y2: { field: "y2" } } },
+    { data: { values: yVals }, transform: yTickCalcs, mark: { type: "rule", color: grey, opacity: { expr: "lw" } }, encoding: { y: px("y"), x: px("x"), x2: { field: "x2" } } },
+    { data: { values: xVals }, transform: xTickCalcs, mark: textMark(sz(11)), encoding: { x: px("x"), y: px("ly"), text: { field: "label", type: "nominal" } } },
+    { data: { values: yVals }, transform: yTickCalcs, mark: textMark(sz(11), { align: "right" }), encoding: { x: px("lx"), y: px("y"), text: { field: "label", type: "nominal" } } },
+    T(wide ? "Venues counted around the station (more = livelier)" : "Venues around the station", { x: `(${X0} + ${X1}) / 2`, y: `${Y1} + 32` }, sz(12), { fontWeight: 600, color: INK }),
+    T(wide ? "Property sales in nearby areas (log scale)" : "Sales nearby (log scale)", { x: "14", y: `(${Y0} + ${Y1}) / 2` }, sz(12), { fontWeight: 600, color: INK, angle: 270 }),
+    T("Quiet, yet a busy market", { x: `${X0} + 10`, y: `${Y0} + 14` }, sz(11), { align: "left", fontStyle: "italic", color: "#5b6673" }),
+    T("Lively, yet almost no sales", { x: `${X1} - 10`, y: `${Y1} - 24` }, sz(11), { align: "right", fontStyle: "italic", color: "#5b6673" }),
+    /* statistics: a column on the right in the finale, one line above the plot once expanded */
+    ...(G.blend ? [{ data: { values: statBlock }, transform: calcs({ x: "gW - 12", y: "30 + datum.i * 17" }),
+      mark: { type: "text", align: "right", fontSize: 11, fontWeight: 600, color: INK, opacity: { expr: "lw * (1 - ex)" } },
+      encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } }] : []),
+    { data: { values: statLine }, transform: calcs({ x: X1, y: `${Y0} - 18` }),
+      mark: { type: "text", align: "right", fontSize: sz(11), fontWeight: 600, color: INK, opacity: { expr: G.blend ? "lw * ex" : "lw" } },
+      encoding: { x: px("x"), y: px("y"), text: { field: "t", type: "nominal" } } }
+  ];
+  const L3 = [
+    /* 3. metro lines (white casing, then colour) */
+    { transform: LINES, mark: { type: "line", color: "#ffffff", strokeWidth: 8, strokeCap: "round", strokeJoin: "round", opacity: { expr: LINE_FADE }, clip: true },
+      encoding: { x: px("px"), y: px("py"), detail: { field: "lines", type: "nominal" }, order: { field: "ord", type: "quantitative" } } },
+    { transform: LINES, mark: { type: "line", strokeWidth: 4.5, strokeCap: "round", strokeJoin: "round", opacity: { expr: LINE_FADE }, clip: true },
+      encoding: {
+        x: px("px"), y: px("py"), detail: { field: "lines", type: "nominal" }, order: { field: "ord", type: "quantitative" },
+        color: { field: "lines", type: "nominal", scale: { domain: LINE_DOMAIN, range: [RED, RED, GREEN] }, legend: null },
+        strokeDash: { field: "lines", type: "nominal", scale: { domain: LINE_DOMAIN, range: [[1, 0], [7, 5], [1, 0]] }, legend: null }
+      } }
+  ];
+  const L4 = [
+    /* 4. the part of the route already travelled */
+    { data: { name: "trail", values: init.trail }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { type: "line", color: INK, strokeWidth: 5, strokeCap: "round", strokeJoin: "round", opacity: { expr: LINE_FADE }, clip: true },
+      encoding: { x: px("mx"), y: px("my"), order: { field: "i", type: "quantitative" } } }
+  ];
+  const L5 = [
+    /* 5. stations: area = venues; in the finale they become the scatter plot */
+    { transform: STATION,
+      mark: { type: "circle", stroke: "#ffffff", strokeWidth: 1.6, clip: true },
+      encoding: {
+        x: px("px"), y: px("py"),
+        size: { field: "area", type: "quantitative", scale: null, legend: null },
+        color: { field: "col", type: "nominal", scale: null, legend: null },
+        opacity: { field: "op", type: "quantitative", scale: null, legend: null },
+        order: { field: "venues", type: "quantitative", sort: "descending" },
+        tooltip: [
+          { field: "station_name", type: "nominal", title: "Station" },
+          { field: "station_no", type: "nominal", title: "Station number" },
+          { field: "venues", type: "quantitative", title: "Venues around it", format: ",d" },
+          { field: "sales", type: "quantitative", title: "Sales nearby (10% sample)", format: ",d" }
+        ]
+      } }
+  ];
+  const L6 = [
+    /* 6. ring around the current / selected station */
+    { transform: [...STATION, { filter: "datum.station_no == hiStn && (lw < 0.5 || datum.sales > 0)" }, { calculate: "PI * (datum.r + 7) * (datum.r + 7)", as: "ringArea" }],
+      mark: { type: "circle", filled: false, stroke: INK, strokeWidth: 3, clip: true },
+      encoding: { x: px("px"), y: px("py"), size: { field: "ringArea", type: "quantitative", scale: null, legend: null } } }
+  ];
+  const L7 = [
+    /* 7. station names */
+    ...labelLayers(1), ...labelLayers(-1)
+  ];
+  const L8 = [
+    /* 8. the train, seen from above: shadow, dark outline, three white cars, blue windows, amber cab at the front */
+    { data: { name: "train", values: init.train }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { ...trainBase, type: "line", color: "#000000", strokeWidth: 21, strokeCap: "round", opacity: { expr: trainOpacity + " * 0.2" } }, encoding: trainEnc },
+    { data: { name: "train" }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { ...trainBase, type: "line", color: INK, strokeWidth: 17, strokeCap: "round" }, encoding: trainEnc },
+    { data: { name: "train" }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { ...trainBase, type: "line", color: "#f7f9fb", strokeWidth: 12, strokeCap: "butt", strokeDash: [car, 3] }, encoding: trainEnc },
+    { data: { name: "train" }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { ...trainBase, type: "line", color: "#2f6f9f", strokeWidth: 5, strokeCap: "butt", strokeDash: [2.6, 2.1] }, encoding: trainEnc },
+    { data: { name: "train" }, transform: [...mapPx2("lon", "lat", "mx", "my")],
+      mark: { ...trainBase, type: "line", color: AMBER, strokeWidth: 12, strokeCap: "butt", strokeDash: [0.01, TRAIN_LEN - 6, 6, 1000] }, encoding: trainEnc }
+  ];
+  const L9 = [
+    /* 9. names of notable stations in the scatter plot */
+    noteLayer(NOTE_LEFT, "left"), noteLayer(NOTE_RIGHT, "right")
+  ];
+  const L10 = [
+    /* 10. venue card (wide screens only: on narrow screens it is a separate view below the map) */
+    ...(wide ? panelLayers(c, G.box) : [])
+  ];
+  const mapLayers = explore ? [...L2, ...L5, ...L6, ...L9, ...L10]
+                            : [...L1, ...L2, ...L3, ...L4, ...L5, ...L6, ...L7, ...L8, ...L9, ...L10];
+
+  const mapView = {
+    width: wide && init.gW ? Math.round(init.gW) : W, height: wide && init.gH ? Math.round(init.gH) : Hm,
+    view: { fill: explore ? "#eef3f8" : "#cde0f0", stroke: null },
+    ...(explore ? {} : { projection: { type: "mercator", center: { expr: "[camLon, camLat]" }, scale: { expr: `${SC} * zoom` }, translate: { expr: "[ox, oy]" } } }),
+    layer: mapLayers
+  };
+
+  const top = {
+    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+    padding: { left: 0, right: 0, top: 0, bottom: 0 },
+    config: { font: "Segoe UI, system-ui, Arial, sans-serif", view: { stroke: null }, title: { color: INK } },
+    data: { url: VENUES_URL, format: { type: "csv", parse: { latitude: "number", longitude: "number", venues: "number" } } },
+    params: [
+      { name: "camLon", value: init.camLon }, { name: "camLat", value: init.camLat }, { name: "zoom", value: init.zoom },
+      { name: "ox", value: init.ox }, { name: "oy", value: init.oy },
+      { name: "lw", value: init.lw }, { name: "prog", value: init.prog }, { name: "trainOn", value: init.trainOn },
+      { name: "hiStn", value: init.hi },
+      { name: "stnA", value: init.pa }, { name: "stnB", value: init.pb }, { name: "pe", value: init.pe },
+      { name: "hudName", value: init.hudName }, { name: "hudRoute", value: init.hudRoute },
+      { name: "hudRank", value: init.hudRank }, { name: "hudColor", value: init.hudColor },
+      { name: "tickMode", value: init.tick },
+      { name: "gW", value: init.gW || W }, { name: "gH", value: init.gH || Hm }, { name: "ex", value: init.ex || 0 },
+      ...G.params
+    ]
+  };
+  if (wide) return { ...top, ...mapView };
+  const panelBox = { x: "0", y: "0", w: String(W), h: String(Hb), f: String(clamp(Hb / 300, 1, 1.7)) };
+  return { ...top, spacing: 6, bounds: "flush", vconcat: [mapView, { width: W, height: Hb, layer: panelLayers(c, panelBox) }] };
+}
+
+/* ====================================================================
+   Page logic: scroll -> step -> animated state change
+==================================================================== */
+const els = {
+  steps: document.getElementById("steps"), vis: document.getElementById("vis"), stage: document.getElementById("stage"),
+  inner: document.getElementById("stageInner"), dots: document.getElementById("dots"), prev: document.getElementById("prevBtn"),
+  next: document.getElementById("nextBtn"), navLabel: document.getElementById("navLabel"),
+  story: document.getElementById("story"), strip: document.getElementById("exStrip")
+};
+const STOP_COUNT = 8;
+
+let ctx = null, STEPS = [], view = null, cur = 0, anim = null, dims = null, DTOT = 0, ZSTOP = 4;
+
+/* animated state of the story */
+const S = { prog: -1, d: 0, wT: 0, zoom: 1, lw: 0, trainOn: 0, ex: 0, tick: 0, pa: "AVG", pb: "AVG", pe: 1, hi: "",
+            hudName: "Average station", hudRoute: "Network", hudRank: "", hudColor: "#8896a4" };
+
+function targetState(i) {
+  const st = STEPS[i];
+  if (st.key === "intro") return { prog: -1, d: 0, wT: 0, zoom: 1, lw: 0, trainOn: 0, ex: 0 };
+  if (st.key === "finale") return { prog: DTOT + 1, d: DTOT, wT: 0, zoom: 1, lw: 1, trainOn: 0, ex: 0 };
+  if (st.key === "explore") return { prog: DTOT + 1, d: DTOT, wT: 0, zoom: 1, lw: 1, trainOn: 0, ex: 1 };   /* the stage expands to the full width */
+  return { prog: st.dist, d: st.dist, wT: 1, zoom: ZSTOP, lw: 0, trainOn: 1, ex: 0 };
+}
+
+/* position along a polyline of {dist, lon, lat} points */
+function posOn(p, d) {
+  if (d <= p[0].dist) return { lon: p[0].lon, lat: p[0].lat };
+  for (let i = 1; i < p.length; i++) {
+    if (d <= p[i].dist) {
+      const t = (d - p[i - 1].dist) / (p[i].dist - p[i - 1].dist);
+      return { lon: lerp(p[i - 1].lon, p[i].lon, t), lat: lerp(p[i - 1].lat, p[i].lat, t) };
+    }
+  }
+  const l = p[p.length - 1]; return { lon: l.lon, lat: l.lat };
+}
+const posAt = d => posOn(ctx.path, d);
+
+/* the route is extended 2 km beyond both ends so that the train can sit centred on the first and last station */
+function extendedPath(path) {
+  const km = { lon: 111.32 * Math.cos((25.1 * Math.PI) / 180), lat: 110.57 };
+  const ext = (a, b, len) => {                         /* point beyond b, continuing the direction a -> b */
+    const seg = Math.hypot((b.lon - a.lon) * km.lon, (b.lat - a.lat) * km.lat);
+    return { lon: b.lon + ((b.lon - a.lon) / seg) * len, lat: b.lat + ((b.lat - a.lat) / seg) * len };
+  };
+  const n = path.length, h = ext(path[1], path[0], 2), t = ext(path[n - 2], path[n - 1], 2);
+  return [{ ...h, dist: -2 }, ...path, { ...t, dist: path[n - 1].dist + 2 }];
+}
+function pxPerKm(zoom) { return (SCALE_PX * zoom * (Math.PI / 180)) / (111.32 * Math.cos((25.1 * Math.PI) / 180)); }
+
+function trailPoints(d) {                             /* vertices travelled so far, ending at the train */
+  if (d <= 0.0001) return [];
+  const pts = [];
+  ctx.path.forEach(p => { if (p.dist < d) pts.push({ lon: p.lon, lat: p.lat }); });
+  const pos = posAt(d); pts.push({ lon: pos.lon, lat: pos.lat });
+  return pts.map((p, i) => ({ ...p, i }));
+}
+
+function trainPoints(d, zoom) {                       /* the train: a fixed number of pixels long, following the track */
+  const len = (dims.wide ? 54 : 40) / pxPerKm(zoom), a = d - len / 2, b = d + len / 2;
+  const pts = [posOn(ctx.pathExt, a)];
+  ctx.pathExt.forEach(p => { if (p.dist > a && p.dist < b) pts.push({ lon: p.lon, lat: p.lat }); });
+  pts.push(posOn(ctx.pathExt, b));
+  return pts.map((p, i) => ({ lon: p.lon, lat: p.lat, i }));
+}
+
+function stationLabel(code) {
+  if (code === "AVG") return { name: "Average station", route: "Network", color: "#8896a4", total: ctx.avg, rank: "" };
+  const s = ctx.st[code];
+  return { name: s.name.replace("Stations", "Station"), route: s.route === "Green" ? "Green Line" : (s.route === "Expo" ? "Route 2020" : "Red Line"),
+           color: s.route === "Green" ? GREEN : RED, total: s.total, rank: `#${s.rank} of ${ctx.ids.length}` };
+}
+
+function camera() {
+  const pos = posAt(S.d);
+  return { lon: lerp(ctx.overview.lon, pos.lon, S.wT), lat: lerp(ctx.overview.lat, pos.lat, S.wT), pos };
+}
+/* where the camera centre sits on screen: the middle at first, then up and to the left so the venue card stays clear */
+function origin() {
+  return dims.wide ? { ox: lerp(dims.W / 2, dims.W * 0.4, S.wT), oy: lerp(dims.Hm * 0.52, dims.Hm * 0.43, S.wT) }
+                   : { ox: dims.W / 2, oy: dims.Hm * 0.52 };
+}
+
+function apply(extraZoomDip = 0) {
+  if (!view) return;
+  const cam = camera(), o = origin(), z = Math.max(1, S.zoom - extraZoomDip);
+  const gW = lerp(dims.W, dims.Wx, S.ex), gH = lerp(dims.Hm, dims.Hx, S.ex);
+  if (dims.wide) view.width(Math.round(gW)).height(Math.round(gH));     /* the canvas grows with the stage */
+  view.signal("gW", gW).signal("gH", gH).signal("ex", S.ex);
+  els.story.style.setProperty("--ex", S.ex.toFixed(4));
+  els.story.classList.toggle("expanded", S.ex > 0.6);
+  els.strip.classList.toggle("on", S.ex > 0.6);
+  view.signal("camLon", cam.lon).signal("camLat", cam.lat).signal("zoom", z).signal("ox", o.ox).signal("oy", o.oy)
+      .signal("lw", S.lw).signal("prog", S.prog).signal("trainOn", S.trainOn)
+      .signal("hiStn", S.hi).signal("stnA", S.pa).signal("stnB", S.pb).signal("pe", S.pe)
+      .signal("hudName", S.hudName).signal("hudRoute", S.hudRoute).signal("hudRank", S.hudRank).signal("hudColor", S.hudColor)
+      .signal("tickMode", S.tick);
+  const showTrain = S.trainOn > 0.01;
+  view.change("trail", vega.changeset().remove(vega.truthy).insert(showTrain ? trailPoints(S.d) : []));
+  view.change("train", vega.changeset().remove(vega.truthy).insert(showTrain ? trainPoints(S.d, z) : []));
+  view.run();
+}
+
+function setHud(code, final) {
+  const l = stationLabel(code);
+  const finale = STEPS[cur] && (STEPS[cur].key === "finale" || STEPS[cur].key === "explore") && code === "AVG";
+  S.hudName = l.name; S.hudRoute = finale ? "Click any dot to compare" : l.route; S.hudColor = l.color; S.hudRank = final ? l.rank : "";
+}
+
+function setNav(i) {
+  [...els.dots.children].forEach((li, k) => {
+    const b = li.firstChild; b.classList.toggle("active", k === i); b.classList.toggle("visited", k < i);
+    b.setAttribute("aria-current", k === i ? "step" : "false");
+  });
+  const k = STEPS[i].key;
+  els.navLabel.textContent = k === "intro" ? "Introduction" : (k === "finale" ? "The finale" : (k === "explore" ? "Explore" : `Stop ${i} of ${STOP_COUNT}`));
+  els.prev.disabled = i === 0; els.next.disabled = i === lastStepIndex();
+  [...els.steps.children].forEach((el, k) => el.classList.toggle("active", k === i));
+  document.getElementById("legend").classList.toggle("finale", k === "finale" || k === "explore");
+}
+
+function goStep(i, instant) {
+  if (!view || !ctx) return;
+  if (STEPS[i].key === "explore" && !dims.wide) return;          /* no explore step on narrow screens */
+  if (anim) { cancelAnimationFrame(anim); anim = null; }
+  const prevKey = STEPS[cur].key;
+  cur = i; setNav(i);
+  const st = STEPS[i], to = targetState(i);
+  const from = { prog: S.prog, d: S.d, wT: S.wT, zoom: S.zoom, lw: S.lw, trainOn: S.trainOn, ex: S.ex };
+
+  /* between the finale and the explore view the card keeps whatever station the reader chose */
+  const keep = st.key === "explore" || (st.key === "finale" && prevKey === "explore");
+  const stn = keep ? S.pb : st.stn;
+
+  /* the venue card blends from the current station to the new one */
+  S.pa = S.pe >= 0.5 ? S.pb : S.pa;
+  S.pb = stn; S.pe = 0; if (!keep) S.hi = "";
+  S.tick = st.key === "finale" ? 1 : 0;                  /* black average tick only in the finale */
+  syncModeButtons(S.tick);
+  setHud(stn, false);
+
+  const finish = () => {
+    Object.assign(S, to, { pe: 1, pa: stn, pb: stn });
+    S.hi = st.key === "intro" ? "" : ((st.key === "finale" || st.key === "explore") ? (stn === "AVG" ? "" : stn) : stn);
+    setHud(stn, true); apply(0); anim = null;
+  };
+  if (instant || reduceMotion()) { finish(); return; }
+
+  const dd = Math.abs(to.d - from.d);
+  const dur = (to.ex !== from.ex) ? 1500
+            : 1300 + 1500 * Math.min(1, dd / (0.3 * DTOT)) + (Math.abs(to.lw - from.lw) > 0.5 ? 400 : 0);
+  const dipMax = from.wT * to.wT * Math.min(1, dd / (0.16 * DTOT)) * 1.5;
+  const t0 = performance.now();
+  const frame = now => {
+    const p = clamp((now - t0) / dur, 0, 1), e = ease(p);
+    S.prog = lerp(from.prog, to.prog, e); S.d = lerp(from.d, to.d, e); S.wT = lerp(from.wT, to.wT, e);
+    S.zoom = lerp(from.zoom, to.zoom, e); S.lw = lerp(from.lw, to.lw, e); S.trainOn = lerp(from.trainOn, to.trainOn, e);
+    S.ex = lerp(from.ex, to.ex, e); S.pe = keep ? 1 : e;
+    apply(dipMax * Math.sin(Math.PI * e));
+    if (p < 1) anim = requestAnimationFrame(frame); else finish();
+  };
+  anim = requestAnimationFrame(frame);
+}
+
+/* the user clicks a dot in the finale: show that station's surroundings */
+function selectStation(code) {
+  if (anim) { cancelAnimationFrame(anim); anim = null; }
+  S.pa = S.pe >= 0.5 ? S.pb : S.pa;
+  S.pb = code; S.pe = 0; S.hi = code === "AVG" ? "" : code; setHud(code, true);
+  exEls.select.value = code;
+  if (reduceMotion()) { S.pe = 1; S.pa = code; apply(0); return; }
+  const t0 = performance.now(), dur = 650;
+  const frame = now => {
+    const p = clamp((now - t0) / dur, 0, 1); S.pe = ease(p); apply(0);
+    if (p < 1) anim = requestAnimationFrame(frame); else { S.pa = code; S.pe = 1; apply(0); anim = null; }
+  };
+  anim = requestAnimationFrame(frame);
+}
+
+/* ---------- scroll handling ---------- */
+function triggerY() {
+  const vh = window.innerHeight, narrow = window.matchMedia && window.matchMedia("(max-width: 899px)").matches;
+  if (!narrow) return vh * 0.5;
+  const b = els.stage.getBoundingClientRect().bottom;
+  return b + (vh - b) * 0.38;
+}
+function activeIndexFromScroll() {
+  const y = triggerY(), kids = [...els.steps.children];
+  let idx = 0;
+  kids.forEach((el, i) => { if (!el.hidden && el.getBoundingClientRect().top <= y) idx = i; });
+  return idx;
+}
+let ticking = false;
+function onScroll() {
+  if (ticking) return; ticking = true;
+  requestAnimationFrame(() => { ticking = false; const i = activeIndexFromScroll(); if (i !== cur) goStep(i); });
+}
+function scrollToStep(i) {
+  i = clamp(i, 0, lastStepIndex());
+  const el = els.steps.children[i], r = el.getBoundingClientRect();
+  const card = (el.querySelector(".card") || el).getBoundingClientRect();
+  const top = window.scrollY + card.top + (el.querySelector(".card") ? card.height / 2 : 40) - triggerY();
+  window.scrollTo({ top, behavior: reduceMotion() ? "auto" : "smooth" });
+}
+
+/* ---------- build the page ---------- */
+function buildSteps() {
+  els.steps.innerHTML = ""; els.dots.innerHTML = "";
+  STEPS.forEach((st, i) => {
+    const sec = document.createElement("section");
+    sec.className = "step" + (st.key === "finale" ? " finale-step" : "") + (st.noCard ? " step-explore" : ""); sec.id = "step-" + st.key; sec.dataset.step = i; sec.dataset.route = st.route;
+    sec.innerHTML = st.noCard ? '<div aria-hidden="true"></div>' : `<div class="card"><p class="kicker">${st.kicker}</p><h2>${st.title}</h2>${st.body()}</div>`;
+    els.steps.appendChild(sec);
+    const li = document.createElement("li"), b = document.createElement("button");
+    b.type = "button"; b.title = st.title; b.setAttribute("aria-label", `Go to: ${st.title}`);
+    b.addEventListener("click", () => scrollToStep(i)); li.appendChild(b); els.dots.appendChild(li);
+  });
+}
+
+function lastStepIndex() { return STEPS.length - 1 - (dims && !dims.wide ? 1 : 0); }   /* the explore step only exists on wide screens */
+
+function measure() {
+  const gridMode = !!(window.matchMedia && window.matchMedia("(min-width: 900px)").matches);
+  const storyInner = Math.floor((els.story.clientWidth || 1100) - 36), stepsW = els.steps.clientWidth || 370;
+  const w = gridMode ? storyInner - stepsW - 26 : Math.floor(els.inner.clientWidth || 700);
+  const h = Math.floor(els.inner.clientHeight || 600);
+  const W = clamp(w, 280, 1100), wide = W >= 640;
+  const Hb = h < 470 ? 168 : 190;
+  const Hm = wide ? clamp(h, 300, 1000) : clamp(h - Hb - 6, 200, 800);
+  /* size of the canvas once the stage has expanded over the text column (a 44 px strip of controls sits above it) */
+  return { W, Hm, Hb, wide, gridMode, shift: gridMode ? stepsW + 26 : 0, Wx: gridMode ? clamp(storyInner, 280, 1500) : W, Hx: Hm - 44 };
+}
+
+function currentInit() {
+  const cam = camera(), o = origin(), showTrain = S.trainOn > 0.01;
+  return { camLon: cam.lon, camLat: cam.lat, zoom: S.zoom, ox: o.ox, oy: o.oy, lw: S.lw, prog: S.prog, trainOn: S.trainOn,
+           ex: S.ex, gW: lerp(dims.W, dims.Wx, S.ex), gH: lerp(dims.Hm, dims.Hx, S.ex),
+           hi: S.hi, tick: S.tick, pa: S.pa, pb: S.pb, pe: S.pe, hudName: S.hudName, hudRoute: S.hudRoute, hudRank: S.hudRank, hudColor: S.hudColor,
+           trail: showTrain ? trailPoints(S.d) : [], train: showTrain ? trainPoints(S.d, S.zoom) : [] };
+}
+
+/* wide screens: the story expands into the explore view; narrow screens: a separate explore section below */
+function updateModeUi() {
+  const controls = document.getElementById("exControls");
+  (dims.wide ? els.strip : document.getElementById("exploreCard")).insertBefore(controls, dims.wide ? null : document.getElementById("exploreVis"));
+  const exStep = els.steps.children[STEPS.findIndex(st => st.key === "explore")];
+  if (exStep) exStep.hidden = !dims.wide;
+  const dot = els.dots.children[STEPS.findIndex(st => st.key === "explore")];
+  if (dot) dot.hidden = !dims.wide;
+  document.getElementById("explore").hidden = dims.wide;
+  els.story.style.setProperty("--shift", dims.shift + "px");
+  if (!dims.wide && STEPS[cur] && STEPS[cur].key === "explore") goStep(lastStepIndex(), true);
+}
+
+function syncModeButtons(t) {
+  exEls.colour.classList.toggle("on", t === 0); exEls.tickBtn.classList.toggle("on", t === 1);
+}
+
+async function embedChart() {
+  dims = measure();
+  ZSTOP = dims.wide ? 4 : 4.6;
+  const init = currentInit();
+  const spec = buildSpec(ctx, dims.W, dims.Hm, dims.Hb, init, dims.wide);
+  const res = await vegaEmbed("#vis", spec, { actions: false, renderer: "canvas" });
+  view = res.view;
+  view.addEventListener("click", (ev, item) => {
+    const d = item && item.datum, k = STEPS[cur].key;
+    if ((k === "finale" || k === "explore") && S.lw > 0.95 && d && d.station_no && SALES[d.station_no] > 0 && ctx.st[d.station_no]) selectStation(d.station_no);
+  });
+  updateModeUi();
+}
+
+/* ====================================================================
+   Explore section: a bigger scatter plot (left half) and venue chart (right half) that you drive yourself
+==================================================================== */
+const X = { view: null, dims: null, built: false, anim: null, tick: 0, pa: "AVG", pb: "AVG", pe: 1, hi: "",
+            hudName: "Average station", hudRoute: "Click any dot to compare", hudRank: "", hudColor: "#8896a4" };
+const exEls = { host: document.getElementById("exploreVis"), select: document.getElementById("exploreSelect"),
+                colour: document.getElementById("modeColour"), tickBtn: document.getElementById("modeTick"), reset: document.getElementById("exploreReset") };
+
+function measureExplore() {
+  const W = clamp(Math.floor(exEls.host.clientWidth || 1000), 280, 1280), wide = W >= 720;
+  return { W, wide, Hm: wide ? clamp(Math.round(window.innerHeight * 0.82), 520, 880) : 430, Hb: wide ? 0 : 300 };
+}
+
+function pushExplore() {
+  if (!X.view) return;
+  X.view.signal("stnA", X.pa).signal("stnB", X.pb).signal("pe", X.pe).signal("hiStn", X.hi).signal("tickMode", X.tick)
+        .signal("hudName", X.hudName).signal("hudRoute", X.hudRoute).signal("hudRank", X.hudRank).signal("hudColor", X.hudColor).run();
+}
+
+function exploreSelect(code) {
+  if (!X.view) return;
+  if (X.anim) { cancelAnimationFrame(X.anim); X.anim = null; }
+  const l = stationLabel(code);
+  X.pa = X.pe >= 0.5 ? X.pb : X.pa; X.pb = code; X.pe = 0; X.hi = code === "AVG" ? "" : code;
+  X.hudName = l.name; X.hudRoute = code === "AVG" ? "Click any dot to compare" : l.route; X.hudColor = l.color; X.hudRank = l.rank;
+  exEls.select.value = code;
+  if (reduceMotion()) { X.pe = 1; X.pa = code; pushExplore(); return; }
+  const t0 = performance.now(), dur = 650;
+  const frame = now => {
+    const p = clamp((now - t0) / dur, 0, 1); X.pe = ease(p); pushExplore();
+    if (p < 1) X.anim = requestAnimationFrame(frame); else { X.pa = code; X.pe = 1; pushExplore(); X.anim = null; }
+  };
+  X.anim = requestAnimationFrame(frame);
+}
+
+async function embedExplore() {
+  X.dims = measureExplore();
+  const d = X.dims, o = ctx.overview;
+  const init = { camLon: o.lon, camLat: o.lat, zoom: 1, ox: d.W / 2, oy: d.Hm / 2, lw: 1, prog: DTOT + 1, trainOn: 0, hi: X.hi, tick: X.tick,
+                 pa: X.pa, pb: X.pb, pe: X.pe, hudName: X.hudName, hudRoute: X.hudRoute, hudRank: X.hudRank, hudColor: X.hudColor, trail: [], train: [] };
+  const spec = buildSpec(ctx, d.W, d.Hm, d.Hb, init, d.wide, true);
+  const res = await vegaEmbed("#exploreVis", spec, { actions: false, renderer: "canvas" });
+  X.view = res.view; X.built = true;
+  X.view.addEventListener("click", (ev, item) => {
+    const dt = item && item.datum;
+    if (dt && dt.station_no && SALES[dt.station_no] > 0 && ctx.st[dt.station_no]) exploreSelect(dt.station_no);
+  });
+}
+
+function initExplore() {
+  /* station list: the stations that appear as dots, alphabetically */
+  const opts = ['<option value="AVG">Average station</option>'].concat(
+    ctx.ids.filter(k => SALES[k] > 0).sort((a, b) => ctx.st[a].name.localeCompare(ctx.st[b].name))
+      .map(k => `<option value="${k}">${ctx.st[k].name.replace("Stations", "Station")} (${ctx.st[k].route === "Green" ? "Green" : "Red"} Line)</option>`));
+  exEls.select.innerHTML = opts.join("");
+  const choose = code => (dims && dims.wide ? selectStation(code) : exploreSelect(code));
+  exEls.select.addEventListener("change", () => choose(exEls.select.value));
+  exEls.reset.addEventListener("click", () => choose("AVG"));
+  const setMode = t => {
+    if (dims && dims.wide) { S.tick = t; apply(0); } else { X.tick = t; pushExplore(); }
+    syncModeButtons(t);
+  };
+  exEls.colour.addEventListener("click", () => setMode(0));
+  exEls.tickBtn.addEventListener("click", () => setMode(1));
+
+  /* build the chart when the section is about to come into view */
+  const section = document.getElementById("explore");
+  const build = () => { if (!X.built && dims && !dims.wide) { X.built = true; embedExplore().catch(e => { console.error(e); exEls.host.innerHTML = '<p class="error">Could not draw the chart: ' + e.message + "</p>"; }); } };
+  X.build = build;                                    /* called once the page size is known when there is no IntersectionObserver */
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { build(); io.disconnect(); } }, { rootMargin: "700px 0px" });
+    io.observe(section);
+  }
+  let timer = null, lastW = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (X.view && dims && !dims.wide) { const m = measureExplore(); if (Math.abs(m.W - (X.dims ? X.dims.W : 0)) > 40 || m.wide !== X.dims.wide) embedExplore(); } }, 350);
+  });
+}
+
+async function init() {
+  try {
+    ctx = await loadContext();
+    DTOT = ctx.path[ctx.path.length - 1].dist;
+    ctx.pathExt = extendedPath(ctx.path);
+    STEPS = makeSteps(ctx);
+    STEPS.forEach(st => { if (st.stn !== "AVG") st.dist = ctx.path.find(p => p.id === st.stn).dist; });
+    buildSteps();
+    initExplore();
+    setHud("AVG", true); setNav(0);
+    await embedChart();
+    if (!("IntersectionObserver" in window)) X.build();
+    goStep(activeIndexFromScroll(), true);
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    els.prev.addEventListener("click", () => scrollToStep(cur - 1));
+    els.next.addEventListener("click", () => scrollToStep(cur + 1));
+    let timer = null, last = dims;
+    window.addEventListener("resize", () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const m = measure();
+        if (Math.abs(m.W - last.W) > 40 || Math.abs(m.Hm - last.Hm) > 40 || m.wide !== last.wide) { last = m; await embedChart(); apply(0); }
+      }, 300);
+    });
+  } catch (err) {
+    console.error(err);
+    els.vis.innerHTML = '<p class="error">Sorry, the story could not load: ' + err.message + "</p>";
+  }
+}
+init();
+
+/* handy for debugging and testing */
+window.__story = { goStep, exploreSelect, get explore() { return X; }, embedExplore, get ctx() { return ctx; }, get view() { return view; }, S, get STEPS() { return STEPS; } };
+</script>
+</body>
+</html>
