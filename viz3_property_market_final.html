@@ -13,8 +13,8 @@
   :root { --ink:#1c2530; --muted:#5b6673; --line:#d9dee4; --bg:#f3f5f7; --card:#fff; --accent:#1f5f8b; }
   * { box-sizing: border-box; }
   body { margin:0; padding:0 16px 56px; font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
-         color:var(--ink); background:var(--bg); line-height:1.55; }
-  main { max-width:1180px; margin:0 auto; }
+        color:var(--ink); background:var(--bg); line-height:1.55; }
+  main { max-width:1320px; margin:0 auto; }
   header { padding:34px 0 4px; }
   h1 { font-size:1.75rem; margin:0 0 6px; letter-spacing:-0.01em; }
   header p { margin:0; color:var(--muted); max-width:80ch; }
@@ -30,7 +30,31 @@
   .toolbar button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
   .toolbar button:disabled { cursor:default; opacity:.65; }
   .toolbar button:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
-  #caption { margin:6px 0 12px; min-height:3.2em; max-width:100ch; }
+
+  /* ---------- chart on the left, layout controls on the right (they stay in view while you scroll) ---------- */
+  .workspace { display:grid; grid-template-columns:minmax(0,1fr) 236px; gap:18px; align-items:start; }
+  .chart-col { min-width:0; }
+  .side { position:sticky; top:14px; max-height:calc(100vh - 28px); overflow:auto; background:#f6f8fa; border:1px solid var(--line);
+          border-radius:10px; padding:14px 14px 16px; }
+  .side h2 { margin:0 0 8px; font-size:1rem; letter-spacing:.02em; }
+  .side .toolbar { flex-direction:column; align-items:stretch; gap:6px; margin:0 0 8px; }
+  .side .toolbar button { border-radius:8px; text-align:left; padding:8px 12px; }
+  .side .history-btn { width:100%; font:inherit; font-size:.92rem; font-weight:600; padding:9px 12px; border-radius:8px; cursor:pointer; text-align:left;
+                      border:1px dashed var(--accent); background:#eef5fb; color:var(--accent); margin:0 0 10px; display:flex; justify-content:space-between; gap:8px; }
+  .side .history-btn:hover { background:#e1eef8; }
+  .side .history-btn:focus-visible { outline:3px solid #9cc7e6; outline-offset:2px; }
+  .side .zoombar { flex-direction:column; align-items:stretch; gap:6px; margin:10px 0 0; padding:10px; background:#fff; }
+  .side .zoombar .row { display:flex; align-items:center; gap:6px; }
+  .side .zoombar input[type=range] { flex:1 1 auto; width:auto; min-width:0; }
+  .side .zoombar .tip { font-size:.78rem; }
+  @media (max-width: 1000px) {
+    .workspace { display:block; }
+    .side { position:static; max-height:none; margin-bottom:14px; }
+    .side .toolbar { flex-direction:row; flex-wrap:wrap; }
+    .side .toolbar button { border-radius:999px; text-align:center; }
+    .side .history-btn { width:auto; display:inline-flex; }
+  }
+  #caption { margin:6px 0 4px; min-height:5.5em; font-size:.92rem; }
   #caption b { color:var(--accent); }
   .zoombar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px; padding:8px 12px;
             background:#f3f6f9; border:1px solid var(--line); border-radius:8px; transition:opacity .2s; }
@@ -90,25 +114,32 @@
       <output id="minSalesValue" for="minSalesSlider">25</output>
       <span class="tip" id="minSalesCount">Medians based on very few sales are unreliable, so raise this to see only well-supported communities.</span>
     </div>
-    <div class="toolbar" role="group" aria-label="Choose a layout">
-      <span class="label">Layout:</span>
-      <button type="button" data-layout="0" class="active">Map</button>
-      <button type="button" data-layout="1">Price vs size</button>
-      <button type="button" data-layout="3">Market maturity</button>
-      <button type="button" data-layout="2">Bars: most sales</button>
-      <button type="button" data-layout="4">Bars: highest price</button>
+    <div class="workspace">
+      <div class="chart-col"><div class="scroll"><div id="vis"></div></div></div>
+
+      <aside class="side" id="side" aria-label="Layout and view controls">
+        <h2>Layout</h2>
+        <div class="toolbar" role="group" aria-label="Choose a layout">
+          <button type="button" data-layout="0" class="active">Map</button>
+          <button type="button" data-layout="1">Price vs size</button>
+          <button type="button" data-layout="3">Market maturity</button>
+          <button type="button" data-layout="2">Bars: most sales</button>
+          <button type="button" data-layout="4">Bars: highest price</button>
+        </div>
+        <button type="button" class="history-btn" id="historyBtn"><span id="historyLabel">Sales and prices by year</span><span id="historyArrow" aria-hidden="true">&darr;</span></button>
+        <p id="caption"></p>
+        <div class="zoombar" id="zoombar" role="group" aria-label="Map zoom">
+          <span class="label">Map zoom</span>
+          <div class="row">
+            <button type="button" id="zOut" aria-label="Zoom out">&minus;</button>
+            <input type="range" id="zoomSlider" min="1" max="8" step="0.05" value="1" aria-label="Map zoom level">
+            <button type="button" id="zIn" aria-label="Zoom in">+</button>
+          </div>
+          <div class="row"><output id="zoomValue" for="zoomSlider">1.0×</output><button type="button" id="zReset">Reset view</button></div>
+          <span class="tip" id="zoomTip">Scroll, pinch or drag on the map. Bubbles grow as you zoom in.</span>
+        </div>
+      </aside>
     </div>
-    <p id="caption"></p>
-    <div class="zoombar" id="zoombar" role="group" aria-label="Map zoom">
-      <span class="label">Map zoom:</span>
-      <button type="button" id="zOut" aria-label="Zoom out">&minus;</button>
-      <input type="range" id="zoomSlider" min="1" max="8" step="0.05" value="1" aria-label="Map zoom level">
-      <button type="button" id="zIn" aria-label="Zoom in">+</button>
-      <output id="zoomValue" for="zoomSlider">1.0×</output>
-      <button type="button" id="zReset">Reset view</button>
-      <span class="tip" id="zoomTip">Scroll, pinch or drag on the map. Bubbles grow as you zoom in.</span>
-    </div>
-    <div class="scroll"><div id="vis"></div></div>
 
   </div>
 </main>
@@ -121,12 +152,24 @@ const GEO_DATA = { url: GEO_URL, format: { type: "json", property: "features" } 
 const GEO_BASE = { url: GEO_URL + "?layer=base", format: { type: "json", property: "features" } };
 
 /* ---------------- layout geometry (pixels inside the 900 x 560 view) ---------------- */
-const W = 900, H = 560;
+let W = 900;
+const H = 560;
 const MAP = { scale: 50000, lon0: 55.245, lat0: 25.11, tx: 380, ty: 285 };
 const SC  = { x0: 100, x1: 850, y0: 30, y1: 500, sizeMin: 40, sizeMax: 260, priceMin: 3000, priceMax: 50000 };
 const BAR = { labelX: 252, x0: 260, len: 520, top: 30, pitch: 24, thick: 18, count: 20 };
 const GRP = { centers: [150, 450, 750], cols: 5, pitch: 56, top: 95, headY: 40 };
 const LAYOUT_NAMES = ["map", "scatter", "barsSales", "groups", "barsPrice"];
+
+/* the chart is laid out for the width it is given (the page keeps a column free for the layout controls) */
+function setGeometry(w) {
+  W = w;
+  MAP.tx = Math.max(285, Math.round(380 * w / 900));              /* keeps the map clear of the left edge */
+  SC.x1 = w - 50;
+  BAR.len = Math.max(180, Math.min(520, w - 260 - 100));
+  GRP.centers = [w / 6, w / 2, (5 * w) / 6];
+  GRP.cols = w < 760 ? 4 : 5;
+  GRP.pitch = Math.min(56, (w / 3 - 24) / GRP.cols);
+}
 
 /* ---------------- data preparation shared by every view ---------------- */
 const CLEAN = [
@@ -141,6 +184,7 @@ const CLEAN = [
 const arr = f => "[" + [0, 1, 2, 3, 4].map(i => "datum." + f + i).join(",") + "]";
 const mix = f => arr(f) + "[fromL]*(1-datum.e)+" + arr(f) + "[toL]*datum.e";
 
+function buildSpec(init) {
 const COMMUNITY = [
   ...CLEAN,
   { aggregate: [
@@ -243,14 +287,14 @@ const layers = [
   {
     transform: [...COMMUNITY, { aggregate: [{ op: "count", as: "k" }], groupby: ["g"] },
       { calculate: "['Mostly existing homes','Mixed market','Mostly off-plan'][datum.g]", as: "head" },
-      { calculate: "['under a third off-plan','a third to two thirds off-plan','over two thirds off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
+      { calculate: "['under ⅓ off-plan','⅓ to ⅔ off-plan','over ⅔ off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
       { calculate: `[${GRP.centers.join(",")}][datum.g]`, as: "hx" }],
     mark: { type: "text", fontSize: 14, fontWeight: 700, opacity: { expr: "w3" } },
     encoding: { x: px("hx"), y: { value: GRP.headY }, text: { field: "head", type: "nominal" } }
   },
   {
     transform: [...COMMUNITY, { aggregate: [{ op: "count", as: "k" }], groupby: ["g"] },
-      { calculate: "['under a third off-plan','a third to two thirds off-plan','over two thirds off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
+      { calculate: "['under ⅓ off-plan','⅓ to ⅔ off-plan','over ⅔ off-plan'][datum.g] + ' · ' + datum.k + ' communities'", as: "sub" },
       { calculate: `[${GRP.centers.join(",")}][datum.g]`, as: "hx" }],
     mark: { type: "text", fontSize: 11, color: "#5b6673", opacity: { expr: "w3" } },
     encoding: { x: px("hx"), y: { value: GRP.headY + 17 }, text: { field: "sub", type: "nominal" } }
@@ -344,7 +388,7 @@ const header = {
 };
 
 const salesPerYear = {
-  width: 330, height: 190,
+  width: Math.round((W - 40) * 0.38), height: 190,
   title: { text: "Sales per year", subtitle: "Existing vs off-plan · click a bubble above to change community", anchor: "start" },
   transform: HISTORY,
   mark: { type: "bar", tooltip: true },
@@ -357,7 +401,7 @@ const salesPerYear = {
 };
 
 const pricePerYear = {
-  width: 400, height: 190,
+  width: Math.round((W - 40) * 0.46), height: 190,
   title: { text: "Median price per m² by year", subtitle: "Years with fewer than 3 sales omitted", anchor: "start" },
   transform: [
     ...HISTORY,
@@ -394,18 +438,18 @@ const spec = {
 
   params: [
     /* animation state: blend from layout fromL to layout toL, tt goes 0 -> 1 (driven by the buttons) */
-    { name: "fromL", value: 0 },
-    { name: "toL", value: 0 },
+    { name: "fromL", value: init.layout },
+    { name: "toL", value: init.layout },
     { name: "tt", value: 1 },
     { name: "te", expr: "tt * tt * (3 - 2 * tt)" },
     /* map zoom and pan (driven by mouse wheel, drag and the zoom slider) */
-    { name: "zoom", value: 1 },
-    { name: "panX", value: 0 },
-    { name: "panY", value: 0 },
+    { name: "zoom", value: init.zoom },
+    { name: "panX", value: init.panX },
+    { name: "panY", value: init.panY },
     /* how strongly each layout is currently shown (used to fade annotations in and out) */
     ...LAYOUT_NAMES.map((n, i) => ({ name: "w" + i, expr: `(fromL == ${i} ? 1 - te : 0) + (toL == ${i} ? te : 0)` })),
     /* minimum number of sales for a community to be shown (driven by the slider at the top of the page) */
-    { name: "minSales", value: 25 }
+    { name: "minSales", value: init.minSales }
   ],
 
   spacing: 18,
@@ -422,6 +466,9 @@ const spec = {
     { vconcat: [header, { spacing: 40, hconcat: [salesPerYear, pricePerYear] }], spacing: 6 }
   ]
 };
+
+return spec;
+}
 
 /* ---------------- page logic: animate the blend between layouts ---------------- */
 const CAPTIONS = [
@@ -483,7 +530,7 @@ function plotPoint(e) {                                         /* pointer posit
 }
 const inPlot = p => p[0] >= 0 && p[0] <= W && p[1] >= 0 && p[1] <= H;
 
-function initZoomControls() {
+function bindCanvas() {
   canvas = document.querySelector("#vis canvas");
   if (!canvas) return;
 
@@ -501,6 +548,19 @@ function initZoomControls() {
     drag = { x: e.clientX, y: e.clientY, px: view.signal("panX"), py: view.signal("panY") };
     dragMoved = false;
   });
+  /* a drag that ends over a bubble must not count as a click on it */
+  canvas.addEventListener("click", e => {
+    if (dragMoved) { e.stopImmediatePropagation(); e.preventDefault(); }
+    dragMoved = false;
+  }, true);
+
+  syncZoomUI();
+}
+
+/* page-level listeners: bound once, however often the chart is rebuilt */
+let zoomBound = false;
+function bindZoomOnce() {
+  if (zoomBound) return; zoomBound = true;
   window.addEventListener("pointermove", e => {
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -514,19 +574,13 @@ function initZoomControls() {
     drag = null;
     if (canvas) canvas.style.cursor = mapActive() ? "grab" : "";
   });
-  /* a drag that ends over a bubble must not count as a click on it */
-  canvas.addEventListener("click", e => {
-    if (dragMoved) { e.stopImmediatePropagation(); e.preventDefault(); }
-    dragMoved = false;
-  }, true);
-
   zoomSlider.addEventListener("input", () => zoomAt(Number(zoomSlider.value), W / 2, H / 2));
   document.getElementById("zIn").addEventListener("click", () => zoomAt(view.signal("zoom") * 1.4, W / 2, H / 2));
   document.getElementById("zOut").addEventListener("click", () => zoomAt(view.signal("zoom") / 1.4, W / 2, H / 2));
   document.getElementById("zReset").addEventListener("click", () => applyView(1, 0, 0));
-  syncZoomUI();
 }
-const buttons = [...document.querySelectorAll(".toolbar button")];
+
+const buttons = [...document.querySelectorAll(".toolbar button[data-layout]")];
 const caption = document.getElementById("caption");
 caption.innerHTML = CAPTIONS[0];
 
@@ -563,8 +617,16 @@ function goTo(target) {
   requestAnimationFrame(frame);
 }
 
+/* ---------------- sizing: the chart takes the width of its column, minus the room its legend and axes need ---------------- */
+function chartWidth() {
+  const col = document.querySelector(".chart-col");
+  return clamp(Math.floor((col.clientWidth || 900) - 73 - 205), 520, 900);
+}
+
 /* minimum-sales filter (slider at the top of the page) */
+let filterBound = false;
 function initFilter() {
+  if (filterBound) return; filterBound = true;
   const slider = document.getElementById("minSalesSlider");
   const out = document.getElementById("minSalesValue");
   slider.addEventListener("input", () => {
@@ -573,14 +635,87 @@ function initFilter() {
   });
 }
 
+async function embedChart() {
+  setGeometry(chartWidth());
+  const init = {
+    layout: current, minSales: Number(document.getElementById("minSalesSlider").value),
+    zoom: view ? view.signal("zoom") : 1, panX: view ? view.signal("panX") : 0, panY: view ? view.signal("panY") : 0
+  };
+  busy = false; buttons.forEach(b => (b.disabled = false));
+  const res = await vegaEmbed("#vis", buildSpec(init), { actions: { export: true, source: true, compiled: false, editor: false }, renderer: "canvas" });
+  view = res.view;
+  bindCanvas(); bindZoomOnce(); initFilter(); syncZoomUI(); updateHistoryButton();
+}
+
+/* ---------------- the "history" button: glide down to the sales per year and price per year charts, and back up ---------------- */
+const historyBtn = document.getElementById("historyBtn");
+const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let scrollAnim = null;
+
+function smoothScrollTo(y, ms = 950) {
+  if (scrollAnim) cancelAnimationFrame(scrollAnim);
+  const from = window.scrollY, to = Math.max(0, Math.round(y));
+  if (reduceMotion() || Math.abs(to - from) < 2) { window.scrollTo(0, to); return; }
+  const t0 = performance.now(), ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  const step = now => {
+    const p = Math.min(1, (now - t0) / ms);
+    window.scrollTo(0, from + (to - from) * ease(p));
+    if (p < 1) scrollAnim = requestAnimationFrame(step); else scrollAnim = null;
+  };
+  scrollAnim = requestAnimationFrame(step);
+}
+
+/* page position of the map (top of the chart) and of the history charts underneath it */
+function chartTops() {
+  const rect = (canvas || document.getElementById("vis")).getBoundingClientRect();
+  const base = rect.top + window.scrollY;
+  let originY = 0, historyY = H + 18;
+  try {
+    originY = view.origin()[1];
+    const group = view.scenegraph().root.items[0].items.find(m => m.name === "concat_1_group");
+    historyY = group.items[0].y;
+  } catch (e) { /* fall back to the layout constants */ }
+  return { map: base + originY, history: base + originY + historyY };
+}
+
+function historyInView() {
+  if (!view) return false;
+  return window.scrollY + window.innerHeight * 0.5 > chartTops().history;
+}
+
+function updateHistoryButton() {
+  const down = !historyInView();
+  document.getElementById("historyLabel").textContent = down ? "Sales and prices by year" : "Back to the map";
+  document.getElementById("historyArrow").innerHTML = down ? "&darr;" : "&uarr;";
+  historyBtn.setAttribute("aria-label", down ? "Scroll down to the sales per year and median price per year charts" : "Scroll back up to the map");
+}
+
+historyBtn.addEventListener("click", () => {
+  const t = chartTops();
+  smoothScrollTo(historyInView() ? t.map - 14 : t.history - 16);
+});
+let scrollTick = false;
+window.addEventListener("scroll", () => {
+  if (scrollTick) return; scrollTick = true;
+  requestAnimationFrame(() => { scrollTick = false; updateHistoryButton(); });
+}, { passive: true });
+
 buttons.forEach(b => b.addEventListener("click", () => goTo(Number(b.dataset.layout))));
 
-vegaEmbed("#vis", spec, { actions: { export: true, source: true, compiled: false, editor: false }, renderer: "canvas" })
-  .then(res => { view = res.view; initZoomControls(); initFilter(); })
-  .catch(err => {
-    console.error(err);
-    document.getElementById("vis").innerHTML = '<p class="error">Could not render the chart: ' + err.message + "</p>";
-  });
+embedChart().catch(err => {
+  console.error(err);
+  document.getElementById("vis").innerHTML = '<p class="error">Could not render the chart: ' + err.message + "</p>";
+});
+
+/* rebuild the chart when the window width changes enough to matter (the current layout, zoom and filter are kept) */
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (view && Math.abs(chartWidth() - W) > 24) embedChart(); }, 300);
+});
+
+/* handy for testing */
+window.__explorer = { get view() { return view; }, goTo, embedChart, get W() { return W; }, chartTops };
 </script>
 </body>
 </html>
